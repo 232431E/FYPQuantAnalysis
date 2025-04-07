@@ -1,12 +1,22 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from .models.data_model import Base
+from sqlalchemy.ext.declarative import declarative_base
 
-# Replace with your actual database URL from your .env file
-DATABASE_URL = "mysql+mysqlclient://your_user:your_password@your_host/your_database"
+load_dotenv()  # Load environment variables from .env file
+
+DATABASE_HOST = os.getenv("DATABASE_HOST")
+DATABASE_USER = os.getenv("DATABASE_USER")
+DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD")
+DATABASE_NAME = os.getenv("DATABASE_NAME")
+
+DATABASE_URL = f"mysql+mysqlclient://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}/{DATABASE_NAME}"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
 
 def get_db():
     db = SessionLocal()
@@ -15,15 +25,5 @@ def get_db():
     finally:
         db.close()
 
-# Example CRUD operations (you'll likely expand these)
-def create_company(db: SessionLocal, ticker: str, name: str):
-    db_company = Company(ticker=ticker, name=name)
-    db.add(db_company)
-    db.commit()
-    db.refresh(db_company)
-    return db_company
-
-def get_company_by_ticker(db: SessionLocal, ticker: str):
-    return db.query(Company).filter(Company.ticker == ticker).first()
-
-# Implement similar functions for FinancialData (create, get, etc.)
+# You can add helper functions here for basic database operations (CRUD)
+# as outlined in the previous detailed response for Task 1.5.
