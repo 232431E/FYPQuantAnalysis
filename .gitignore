@@ -1,0 +1,68 @@
+# Python-specific ignores
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info
+.python-version
+env/
+venv/
+instance/
+.pytest_cache/
+.coverage
+*.log
+
+# Flask-specific ignores (if applicable, adjust based on your setup)
+*.sqlite
+app.db  # If you're using a local SQLite database for development
+
+# MySQL-specific ignores (sensitive connection info - be careful!)
+# You might have configuration files with database credentials
+# Consider NOT committing these and using environment variables instead.
+# If you absolutely must, ensure they don't contain passwords directly.
+# database.config
+# db_credentials.json
+
+# Bootstrap-related ignores (usually part of your static assets, should be tracked)
+# Generally, you WANT to track your Bootstrap CSS and JS files
+# located in your frontend/static/css and frontend/static/js directories.
+# Only add these if you are somehow generating Bootstrap files dynamically
+# and don't want to track the generated output.
+# bootstrap/
+# dist/
+
+# General OS and editor-specific ignores
+.DS_Store
+.Thumbs.db
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Virtual Environment Managers
+.env*
+.venv*
+
+# Package Managers
+node_modules/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# IDE-specific files and folders
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Build and distribution (if you're packaging your Flask app)
+build/
+dist/
+sdist/
+*.whl
+
+# Temporary files and logs (more general)
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
