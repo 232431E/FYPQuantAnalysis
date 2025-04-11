@@ -1,200 +1,105 @@
 # backend/services/data_service.py
-import requests
-# import pandas as pd
-from datetime import datetime, timedelta
+import yfinance as yf
+from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
-from ..database import SessionLocal
-from ..models.data_model import Company, FinancialData
-import os
-from dotenv import load_dotenv
+from backend.database import get_db
+from backend.models import data_model
+from backend import database
+import time
 
-# Load environment variables
-load_dotenv()
-
-# API Keys
-FINANCIAL_API_KEY = os.getenv("FINANCIAL_API_KEY")
-
-def fetch_company_info(ticker):
-    """Fetch company information from API"""
-    # Example using Alpha Vantage API
-    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={FINANCIAL_API_KEY}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return {
-            "company_name": data.get("Name"),
-            "ticker_symbol": ticker,
-            "exchange": data.get("Exchange"),
-            "industry": data.get("Industry")
-        }
-    return None
-
-def fetch_financial_data(ticker, start_date=None, end_date=None):
-    """Fetch financial data from API"""
-    # Default to last 100 days if no dates provided
-    if not end_date:
-        end_date = datetime.now()
-    if not start_date:
-        start_date = end_date - timedelta(days=100)
-    
-    # Example using Alpha Vantage API
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={FINANCIAL_API_KEY}&outputsize=full"
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        data = response.json()
-        time_series = data.get("Time Series (Daily)", {})
-        
-        financial_data = []
-        for date_str, values in time_series.items():
-            date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            
-            # Filter by date range
-            if start_date.date() <= date <= end_date.date():
-                financial_data.append({
-                    "date": date,
-                    "open": float(values.get("1. open", 0)),
-                    "high": float(values.get("2. high", 0)),
-                    "low": float(values.get("3. low", 0)),
-                    "close": float(values.get("4. close", 0)),
-                    "volume": int(values.get("5. volume", 0))
-                })
-        
-        # Calculate additional metrics
-        for data_point in financial_data:
-            # Simple ROI calculation (daily return)
-            if data_point["open"] > 0:
-                data_point["roi"] = (data_point["close"] - data_point["open"]) / data_point["open"] * 100
-            else:
-                data_point["roi"] = 0
-                
-            # Other metrics would typically come from different API calls or calculations
-            data_point["eps"] = None
-            data_point["pe_ratio"] = None
-            data_point["revenue"] = None
-            data_point["debt_to_equity"] = None
-            data_point["cash_flow"] = None
-        
-        return financial_data
-    
-    return []
-
-def validate_financial_data(data):
-    """Validate financial data"""
-    validated_data = []
-    for item in data:
-        # Check required fields
-        if not all(k in item for k in ["date", "open", "high", "low", "close", "volume"]):
-            continue
-        
-        # Validate data types
-        try:
-            item["open"] = float(item["open"])
-            item["high"] = float(item["high"])
-            item["low"] = float(item["low"])
-            item["close"] = float(item["close"])
-            item["volume"] = int(item["volume"])
-            
-            # Add to validated data
-            validated_data.append(item)
-        except (ValueError, TypeError):
-            continue
-    
-    return validated_data
-
-def store_company_data(ticker):
-    """Store company and its financial data"""
-    db = SessionLocal()
+def fetch_daily_news(db: Session, ticker_symbol: str, fetch_date: date):
     try:
-        # Fetch company info
-        company_info = fetch_company_info(ticker)
-        if not company_info:
-            return {"success": False, "message": f"Could not fetch info for {ticker}"}
-        
-        # Check if company exists
-        company = db.query(Company).filter(Company.ticker_symbol == ticker).first()
+        company = database.get_company_by_ticker(db, ticker_symbol)
         if not company:
-            # Create company
-            company = Company(**company_info)
-            db.add(company)
-            db.commit()
-            db.refresh(company)
-        
-        # Fetch financial data
-        financial_data = fetch_financial_data(ticker)
-        if not financial_data:
-            return {"success": False, "message": f"Could not fetch financial data for {ticker}"}
-        
-        # Validate financial data
-        validated_data = validate_financial_data(financial_data)
-        
-        # Store financial data
-        for data_point in validated_data:
-            # Check if data for this date already exists
-            existing_data = db.query(FinancialData).filter(
-                FinancialData.company_id == company.company_id,
-                FinancialData.date == data_point["date"]
-            ).first()
-            
-            if not existing_data:
-                # Add company_id to data
-                data_point["company_id"] = company.company_id
-                
-                # Create financial data entry
-                financial_data_entry = FinancialData(**data_point)
-                db.add(financial_data_entry)
-        
-        db.commit()
-        return {"success": True, "message": f"Successfully stored data for {ticker}"}
-    
+            print(f"Company with ticker {ticker_symbol} not found in the database.")
+            return
+
+        deleted_count = database.delete_news_by_date(db, company.company_id, fetch_date)
+        if deleted_count > 0:
+            print(f"Deleted {deleted_count} news items for {ticker_symbol} on {fetch_date}.")
+
+        ticker = yf.Ticker(ticker_symbol)
+        news_data = ticker.news
+        print(f"Raw news data from Yahoo Finance for {ticker_symbol} on {fetch_date}: {news_data}") # Debug print
+
+        for item in news_data:
+            print(f"Processing news item: {item}") # Debug print
+            timestamp = item.get("publishedAt")
+            published_at_datetime = datetime.fromtimestamp(timestamp) if timestamp else None
+            news_record = {
+                "company_id": company.company_id,
+                "title": item.get("title"),
+                "description": item.get("summary"),
+                "url": item.get("link"),
+                "published_at": published_at_datetime
+            }
+            print(f"News record to be saved: {news_record}") # Debug print
+            database.create_news(db, news_record)
+        print(f"Successfully retrieved and saved {len(news_data)} news items for {ticker_symbol} on {fetch_date}.")
+
     except Exception as e:
-        db.rollback()
-        return {"success": False, "message": str(e)}
-    
-    finally:
-        db.close()
+        print(f"Error fetching news for {ticker_symbol} on {fetch_date}: {e}")
 
-def get_weekly_data(company_id):
-    """Get weekly financial data for a company"""
-    db = SessionLocal()
-    try:
-        # Get financial data from the weekly view
-        result = db.execute(f"""
-            SELECT * FROM weekly_financial_data 
-            WHERE company_id = {company_id}
-            ORDER BY week DESC
-        """).fetchall()
-        
-        return [dict(row) for row in result]
-    finally:
-        db.close()
+def retry_previous_day_news(db: Session, ticker_symbol: str, failed_date: date):
+    previous_date = failed_date - timedelta(days=1)
+    print(f"Retrying news retrieval for {ticker_symbol} on {previous_date}...")
+    fetch_daily_news(db, ticker_symbol, previous_date)
 
-def get_monthly_data(company_id):
-    """Get monthly financial data for a company"""
-    db = SessionLocal()
-    try:
-        # Get financial data from the monthly view
-        result = db.execute(f"""
-            SELECT * FROM monthly_financial_data 
-            WHERE company_id = {company_id}
-            ORDER BY month DESC
-        """).fetchall()
-        
-        return [dict(row) for row in result]
-    finally:
-        db.close()
+def delete_news_by_date(db: Session, company_id: int, date_obj: date):
+    deleted_count = db.query(data_model.News).filter(
+        data_model.News.company_id == company_id,
+        func.date(data_model.News.published_at) == date_obj
+    ).delete()
+    db.commit()
+    return deleted_count
 
-def get_yearly_data(company_id):
-    """Get yearly financial data for a company"""
-    db = SessionLocal()
-    try:
-        # Get financial data from the yearly view
-        result = db.execute(f"""
-            SELECT * FROM yearly_financial_data 
-            WHERE company_id = {company_id}
-            ORDER BY year DESC
-        """).fetchall()
-        
-        return [dict(row) for row in result]
-    finally:
-        db.close()
+# Example of how you might schedule this to run daily for tracked companies
+def update_daily_news_for_all_companies(db: Session):
+    companies = db.query(data_model.Company).all()
+    today = date.today()
+    for company in companies:
+        fetch_daily_news(db, company.ticker_symbol, today)
+        # Consider adding error handling and retries here
+
+# backend/services/data_service.py
+from sqlalchemy.orm import Session
+from backend.models import data_model
+from sqlalchemy import func
+
+def get_daily_financial_data(db: Session, company_id: int):
+    return db.query(
+        data_model.FinancialData.date,
+        data_model.FinancialData.open,
+        data_model.FinancialData.close,
+        data_model.FinancialData.volume
+    ).filter(data_model.FinancialData.company_id == company_id).order_by(data_model.FinancialData.date.desc()).all()
+
+def get_weekly_financial_data(db: Session, company_id: int):
+    # Example using SQL functions for weekly aggregation (adjust for MySQL syntax)
+    return db.query(
+        func.date_format(data_model.FinancialData.date, '%Y-%U').label('week'),
+        func.avg(data_model.FinancialData.open).label('avg_open'),
+        func.avg(data_model.FinancialData.close).label('avg_close'),
+        func.sum(data_model.FinancialData.volume).label('total_volume')
+    ).filter(data_model.FinancialData.company_id == company_id).group_by('week').order_by('week.desc()').all()
+
+def get_monthly_financial_data(db: Session, company_id: int):
+    # Example for monthly aggregation
+    return db.query(
+        func.date_format(data_model.FinancialData.date, '%Y-%m').label('month'),
+        func.avg(data_model.FinancialData.open).label('avg_open'),
+        func.avg(data_model.FinancialData.close).label('avg_close'),
+        func.sum(data_model.FinancialData.volume).label('total_volume')
+    ).filter(data_model.FinancialData.company_id == company_id).group_by('month').order_by('month.desc()').all()
+
+def get_yearly_financial_data(db: Session, company_id: int):
+    # Example for yearly aggregation
+    return db.query(
+        func.date_format(data_model.FinancialData.date, '%Y').label('year'),
+        func.avg(data_model.FinancialData.open).label('avg_open'),
+        func.avg(data_model.FinancialData.close).label('avg_close'),
+        func.sum(data_model.FinancialData.volume).label('total_volume')
+    ).filter(data_model.FinancialData.company_id == company_id).group_by('year').order_by('year.desc()').all()
+
+def get_latest_news_for_company(db: Session, company_id: int, limit: int = 10):
+    return db.query(data_model.News).filter(data_model.News.company_id == company_id).order_by(data_model.News.published_at.desc()).limit(limit).all()
