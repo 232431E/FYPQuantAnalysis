@@ -64,7 +64,7 @@ def update_daily_news_for_all_companies(db: Session):
 # backend/services/data_service.py
 from sqlalchemy.orm import Session
 from backend.models import data_model
-from sqlalchemy import func
+from sqlalchemy import func, extract, text
 
 def get_daily_financial_data(db: Session, company_id: int):
     return db.query(
@@ -74,32 +74,43 @@ def get_daily_financial_data(db: Session, company_id: int):
         data_model.FinancialData.volume
     ).filter(data_model.FinancialData.company_id == company_id).order_by(data_model.FinancialData.date.desc()).all()
 
+from sqlalchemy import func, text
+
 def get_weekly_financial_data(db: Session, company_id: int):
-    # Example using SQL functions for weekly aggregation (adjust for MySQL syntax)
     return db.query(
-        func.date_format(data_model.FinancialData.date, '%Y-%U').label('week'),
+        func.concat(func.year(data_model.FinancialData.date), '-', func.week(data_model.FinancialData.date)).label('week'),
         func.avg(data_model.FinancialData.open).label('avg_open'),
         func.avg(data_model.FinancialData.close).label('avg_close'),
         func.sum(data_model.FinancialData.volume).label('total_volume')
-    ).filter(data_model.FinancialData.company_id == company_id).group_by('week').order_by('week.desc()').all()
+    ).filter(data_model.FinancialData.company_id == company_id).group_by(
+        'week'
+    ).order_by(
+        text('week DESC')  # Use sqlalchemy.sql.expression.text for aliased columns in ORDER BY
+    ).all()
 
 def get_monthly_financial_data(db: Session, company_id: int):
-    # Example for monthly aggregation
     return db.query(
         func.date_format(data_model.FinancialData.date, '%Y-%m').label('month'),
         func.avg(data_model.FinancialData.open).label('avg_open'),
         func.avg(data_model.FinancialData.close).label('avg_close'),
         func.sum(data_model.FinancialData.volume).label('total_volume')
-    ).filter(data_model.FinancialData.company_id == company_id).group_by('month').order_by('month.desc()').all()
+    ).filter(data_model.FinancialData.company_id == company_id).group_by(
+        func.date_format(data_model.FinancialData.date, '%Y-%m')
+    ).order_by(
+        func.date_format(data_model.FinancialData.date, '%Y-%m').desc()
+    ).all()
 
 def get_yearly_financial_data(db: Session, company_id: int):
-    # Example for yearly aggregation
     return db.query(
-        func.date_format(data_model.FinancialData.date, '%Y').label('year'),
+        func.year(data_model.FinancialData.date).label('year'),
         func.avg(data_model.FinancialData.open).label('avg_open'),
         func.avg(data_model.FinancialData.close).label('avg_close'),
         func.sum(data_model.FinancialData.volume).label('total_volume')
-    ).filter(data_model.FinancialData.company_id == company_id).group_by('year').order_by('year.desc()').all()
+    ).filter(data_model.FinancialData.company_id == company_id).group_by(
+        func.year(data_model.FinancialData.date)
+    ).order_by(
+        func.year(data_model.FinancialData.date).desc()
+    ).all()
 
 def get_latest_news_for_company(db: Session, company_id: int, limit: int = 10):
     return db.query(data_model.News).filter(data_model.News.company_id == company_id).order_by(data_model.News.published_at.desc()).limit(limit).all()

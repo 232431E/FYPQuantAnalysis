@@ -1,23 +1,43 @@
 # backend/database.py
-from datetime import date
 import os
+from datetime import date
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.declarative import declarative_base
+from flask import g
 
-SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:mySQL2025%21@localhost/fypquantanalysisplatform'
+SQLALCHEMY_DATABASE_URL = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:mySQL2025%21@localhost/fypquantanalysisplatform'
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(SQLALCHEMY_DATABASE_URI)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Dependency to get the database session
+def get_engine():
+    if os.environ.get('TESTING'):
+        return create_engine(TEST_DATABASE_URL)
+    else:
+        return create_engine(SQLALCHEMY_DATABASE_URL)
+
+def get_session_local():
+    engine = get_engine()
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
+    if 'db' not in g:
+        g.db = get_session_local()()
+    return g.db
+
+def close_db(e=None):
+    db = g.pop('db', None)
+    if db is not None:
         db.close()
 
+def init_db(app):
+    engine = get_engine()
+    Base.metadata.create_all(bind=engine)
+    app.teardown_appcontext(close_db)
+
+def delete_news_by_date(db: Session, company_id: int, date_obj: date):
+    pass
 
 from sqlalchemy.orm import Session
 from .models import data_model

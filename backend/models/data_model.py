@@ -1,5 +1,5 @@
 # backend/models/data_model.py
-from sqlalchemy import Column, Integer, String, Float, Date, BigInteger, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, BigInteger, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
@@ -62,7 +62,7 @@ class News(Base):
     news_id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
     title = Column(String(255), nullable=False)
-    description = Column(String)
+    description = Column(Text)
     url = Column(String(255))
     published_at = Column(DateTime)
     created_at = Column(DateTime, default=func.now())
