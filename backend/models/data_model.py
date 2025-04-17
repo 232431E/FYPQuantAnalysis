@@ -15,10 +15,10 @@ class Company(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    financial_data = None
-    reports = None
-    alerts = None
-    news_items = None
+    financial_data = relationship("FinancialData", back_populates="company")
+    reports = relationship("Report", back_populates="company")
+    alerts = relationship("Alert", back_populates="company")
+    news_items = relationship("News", back_populates="company")
 
 
 class FinancialData(Base):
@@ -40,8 +40,7 @@ class FinancialData(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    company = None
-
+    company = relationship("Company", back_populates="financial_data")
 
 
 class News(Base):
@@ -55,15 +54,7 @@ class News(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    company = None
-
+    company = relationship("Company", back_populates="news_items")
 
 def data_model_init():
-    from .report_model import Report
-    Company.financial_data = relationship("FinancialData", back_populates="company")
-    Company.reports = relationship("Report", back_populates="company")
-    Company.alerts = relationship("Alert", back_populates="company")
-    Company.news_items = relationship("News", back_populates="company")
-
-    FinancialData.company = relationship("Company", back_populates="financial_data")
-    News.company = relationship("Company", back_populates="news_items")
+    pass

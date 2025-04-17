@@ -61,6 +61,9 @@ def _commit_and_refresh(db: Session, instance: Any) -> None:
     db.refresh(instance)
 
 # --- Company CRUD Operations ---
+def get_all_companies(db: Session):
+    return db.query(Company).all()
+
 def get_company(db: Session, company_id: int) -> Optional[Company]:
     """Retrieves a company by its ID."""
     return db.query(Company).filter(Company.company_id == company_id).first()
@@ -119,15 +122,25 @@ def create_financial_data_list(db: Session, financial_data_list: List[Dict[str, 
     db.commit()
     return added_count
 
-def update_financial_data(db: Session, financial_data_id: int, financial_data: Dict[str, Any]) -> Optional[FinancialData]:
-    """Updates an existing financial data record."""
-    db_financial_data = get_financial_data(db, financial_data_id)
-    if db_financial_data:
-        for key, value in financial_data.items():
-            setattr(db_financial_data, key, value)
-        _commit_and_refresh(db, db_financial_data)
-        return db_financial_data
-    return None
+from sqlalchemy.orm import Session
+from backend.models.data_model import FinancialData
+
+def update_financial_data(db: Session, company_id: int, date: date, updated_fields: dict):
+    try:
+        record_to_update = db.query(FinancialData).filter(
+            FinancialData.company_id == company_id,
+            FinancialData.date == date
+        ).first()
+        if record_to_update:
+            for key, value in updated_fields.items():
+                if hasattr(record_to_update, key):
+                    setattr(record_to_update, key, value)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        raise
 
 def delete_financial_data(db: Session, financial_data_id: int) -> bool:
     """Deletes a financial data record by its ID."""

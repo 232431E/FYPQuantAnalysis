@@ -16,13 +16,10 @@ class Report(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    company = None
-    user = None
-    feedbacks = None
+    company = relationship("Company", back_populates="reports")
+    user = relationship("User", back_populates="reports")
+    feedbacks = relationship("Feedback", back_populates="report")
 
 
 def report_model_init():
-    from .data_model import Company
-    Report.company = relationship("Company", back_populates="reports")
-    Report.user = relationship("User", back_populates="reports")
-    Report.feedbacks = relationship("Feedback", back_populates="report")
+    pass

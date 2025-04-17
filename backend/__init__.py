@@ -1,6 +1,38 @@
 # backend/__init__.py
 import os
 print(f"APP_ENV: {os.environ.get('APP_ENV')}")
+from flask import Flask
+from backend.api import api_bp
+from backend.database import init_db  # Assuming you have a function to initialize the database
+from backend.tasks import daily_financial_data_update
+from apscheduler.schedulers.background import BackgroundScheduler
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def create_app():
+    app = Flask(__name__)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./instance/app.db' # Or your database URI
+    # ... other configurations ...
+    init_db(app)
+    app.register_blueprint(api_bp)
+
+    scheduler = BackgroundScheduler(timezone="Asia/Singapore")
+    scheduler.add_job(daily_financial_data_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri')
+    scheduler.start()
+    logger.info("APScheduler started.")
+
+    # Shut down the scheduler when the app exits
+    from atexit import register
+    register(lambda: scheduler.shutdown())
+
+    return app
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(debug=True)
+    
 # ... rest of your Redis initialization ...
 """# backend/__init__.py
 import os

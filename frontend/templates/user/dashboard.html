@@ -7,17 +7,17 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="../static/css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            display: flex; /* Enable flexbox for the body */
-            flex-direction: column; /* Stack items vertically by default */
-            min-height: 100vh; /* Ensure the body takes up at least the full viewport height */
-            margin: 0; /* Remove default body margin */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
         }
         .header {
-            /* Navbar styles here */
-            background-color: #343a40; /* Dark background for navbar */
+            background-color: #343a40;
             color: white;
             padding: 1rem 0;
         }
@@ -25,22 +25,19 @@
             color: white;
             text-decoration: none;
         }
-
         .header a:hover{
             color: #00B8D4;
         }
         .content {
-            /* Content area styles here */
-            flex: 1; /* Allow the content to take up the remaining vertical space */
+            flex: 1;
             padding: 2rem;
         }
         .footer {
-            /* Footer styles here */
-            background-color: #f8f9fa; /* Light background for footer */
+            background-color: #f8f9fa;
             padding: 1rem 0;
             text-align: center;
         }
-        .pagination-container { /* container for pagination controls */
+        .pagination-container {
             display: flex;
             justify-content: center;
             margin-top: 1rem;
@@ -85,6 +82,47 @@
             background-color: #fff;
             border-color: #dee2e6;
             cursor: not-allowed;
+        }
+        .page-navigation {
+            display: flex;
+            align-items: center;
+            margin-top: 1rem;
+            justify-content: space-between;
+        }
+        .page-navigation input[type="number"] {
+            width: 60px;
+            padding: 0.5rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            margin: 0 0.5rem;
+        }
+        .date-filter-container {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .filters-container {
+            margin-bottom: 1rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            display: none; /* Initially hidden */
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out;
+            max-height: 0;
+            display: flex; /* Ensure it's a flex container */
+            justify-content: center; /* Center items horizontally */
+            align-items: center; /* Center items vertically (optional, depending on desired look) */
+            flex-wrap: wrap; /* Allow wrapping if filters take up too much space */
+            gap: 1rem; /* Adjust spacing between filter elements */
+            margin-left: auto; /* These two lines will center the entire container */
+            margin-right: auto;
+            margin-bottom: 2rem; /* Add some bottom margin for spacing */
+        }
+        .select2-container {
+            min-width: 150px; /* Adjust as needed */
         }
     </style>
 </head>
@@ -135,22 +173,47 @@
                     <option value="100">100</option>
                     <option value="200">200</option>
                 </select>
+            </div> 
+        </div>
+        
+        <button id="filtersToggle" class="filters-toggle">Show Filters</button>
+
+        <div id="filtersContainer" class="filters-container flex items-center space-x-4 mb-2">
+            <div>
+                <label for="dateFrom" class="form-label form-label-sm">Date From:</label>
+                <input type="text" id="dateFrom" class="form-control form-control-sm flatpickr">
             </div>
-            <div class="flex items-center">
-                <select id="industryFilter" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md">
-                    <option value="">All Industries</option>
-                </select>
+            <div>
+                <label for="dateTo" class="form-label form-label-sm">Date To:</label>
+                <input type="text" id="dateTo" class="form-control form-control-sm flatpickr">
+            </div>
+            <div>
+                <label class="form-label form-label-sm">Industry:</label>
+                <div id="industryCheckboxes" class="d-flex flex-column">
+                    </div>
+            </div>
+            <div>
+                <button id="applyFiltersButton" class="btn btn-primary btn-sm">Apply Filters</button>
             </div>
         </div>
-
+        
+        <div class="page-navigation">
+            <div id="paginationContainer" class="pagination-container">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination">
+                        </ul>
+                </nav>
+            </div>
+        </div>
         <div id="latestDataDisplay" class="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
             <p>Loading data...</p>
         </div>
-        <div id="paginationContainer" class="pagination-container">
-            <nav aria-label="Page navigation">
-                <ul class="pagination">
-                    </ul>
-            </nav>
+        <div class="page-navigation">
+            <div>
+                <button id="prevPage" class="btn btn-sm btn-outline-secondary mr-2" disabled>Previous</button>
+                <span>Page <input type="number" id="currentPageInput" value="1" min="1"> / <span id="totalPagesDisplay">1</span></span>
+                <button id="nextPage" class="btn btn-sm btn-outline-secondary ml-2">Next</button>
+            </div>
         </div>
     </main>
 
@@ -168,6 +231,8 @@
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script src="https://kit.fontawesome.com/your-font-awesome-kit.js"></script> <script src="../static/js/dashboard.js"></script>
+    <script src="https://kit.fontawesome.com/your-font-awesome-kit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="../static/js/dashboard.js"></script>
 </body>
 </html>
