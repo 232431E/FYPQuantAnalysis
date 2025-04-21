@@ -10,11 +10,14 @@ project_root = os.path.dirname(app_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from flask import Flask, render_template, redirect, url_for
+from flask import Flask, jsonify, render_template, redirect, url_for
 from flask_cors import CORS
+from backend import database
 from backend.database import init_db, get_db
 from backend.models import data_model_init, report_model_init, prompt_model_init
 from sqlalchemy.orm import Session
+from backend.services.data_service import fetch_latest_news, scheduled_news_update
+from apscheduler.schedulers.background import BackgroundScheduler
 
 def create_app():
     app = Flask(__name__,
@@ -57,9 +60,53 @@ def create_app():
 
 app = create_app()
 
+from backend.api import api_bp
+app.register_blueprint(api_bp, url_prefix='/api')
+
+# Initialize the scheduler
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Singapore'))
+
+# Schedule the news update job for 6:00 AM SGT on weekdays (Monday-Friday)
+scheduler.add_job(func=scheduled_news_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
+
+# Start the scheduler (this will run in the background)
+scheduler.start()
+
+# It's good practice to shut down the scheduler when the app exits
+import atexit
+def shutdown_scheduler():
+    scheduler.shutdown()
+atexit.register(shutdown_scheduler)
+
+print("Scheduler started for daily news updates at 6:00 AM SGT on weekdays.")
+
 @app.route('/')
 def index():
     return redirect('/user/dashboard')
+
+@app.route('/api/company/<ticker>/news', methods=['GET'])
+def get_company_news(ticker):
+    db: Session = database.SessionLocal()
+    try:
+        company = database.get_company_by_ticker(db, ticker)
+        if company:
+            news_articles = fetch_latest_news(ticker, company.industry, company.exchange)
+            # You might want to limit the number of articles here
+            top_company_news = news_articles[:5]
+
+            # Fetch industry news (you might need a way to get a list of companies in the same industry
+            # and then fetch news related to the industry in general or top companies in it)
+            # This is a simplified approach - you might need a more sophisticated way to get relevant industry news
+            industry_news = fetch_latest_news(company.industry, company.industry, company.exchange)[:3]
+
+            return jsonify({
+                'company_news': top_company_news,
+                'industry_news': industry_news
+            })
+        else:
+            return jsonify({'error': 'Company not found'}), 404
+    finally:
+        db.close()
 
 if __name__ == '__main__':
     app.run(debug=True)

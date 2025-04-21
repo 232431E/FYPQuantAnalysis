@@ -2,9 +2,15 @@ from flask import Blueprint, jsonify
 from backend.database import get_db, get_company_by_ticker
 from backend.services.data_service import (
     fetch_financial_data,
+    fetch_historical_fundamentals,
+    store_financial_data,
     fetch_latest_news,
-    analyze_news_sentiment,
+    get_similar_companies,
+    store_news_articles,
+    get_stored_news,
+    scheduled_news_update,
     predict_financial_trends,
+    analyze_news_sentiment,
     get_similar_companies
 )
 import os

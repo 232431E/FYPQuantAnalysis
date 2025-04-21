@@ -1,15 +1,18 @@
 # backend/services/data_service.py
 import yfinance as yf
 from sqlalchemy.orm import Session
-from backend import database  # Import the database module
-from backend.models import Company, FinancialData  # Import the models
-from datetime import date
+from backend import database  # Ensure this import is used
+from backend.models import Company, FinancialData, News
+from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 import logging
 import pandas as pd
+import os
+import requests
+import pytz
+from backend.services.llm_service import analyze_news_sentiment
 
-logging.basicConfig(level=logging.INFO)  # Set logging level to INFO for debugging
-
+logging.basicConfig(level=logging.INFO)
 
 def fetch_financial_data(ticker: str, period: str = "5y") -> Optional[List[Dict[str, Any]]]:
     """Fetches historical OHLCV data from yfinance."""
@@ -96,7 +99,8 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
     except Exception as e:
         logging.error(f"Error fetching historical fundamental data for {ticker}: {e}")
         return None
-       
+
+
 def store_financial_data(db: Session, ticker: str) -> bool:
     """Stores historical OHLCV and annual fundamental data for a given ticker (up to 5 years)."""
     company = database.get_company_by_ticker(db, ticker)
@@ -179,3 +183,166 @@ def store_financial_data(db: Session, ticker: str) -> bool:
             logging.warning(f"No OHLCV data fetched for {ticker} for the last 5 years")
             return False
     return False
+
+def scheduled_financial_data_update(app):
+    """Fetches and stores the latest financial data for all companies."""
+    with app.app_context():
+        db = database.get_db()
+        companies = db.query(Company).all()
+        for company in companies:
+            latest_data = database.get_latest_financial_data(company.ticker_symbol)
+            if latest_data:
+                store_financial_data(db, company.company_id, latest_data)
+        logging.info("Daily financial data update completed.")
+        db.close()
+        
+def fetch_latest_news(ticker: str, industry: str, exchange: str) -> List[Dict[str, Any]]:
+    """Fetches the latest news related to the company using a news API."""
+    news_api_key = os.environ.get('NEWS_API_KEY')
+    news_endpoint = 'https://newsapi.org/v2/everything'  # Example NewsAPI endpoint
+    articles: List[Dict[str, Any]] = []
+
+    if not news_api_key:
+        logging.warning("NEWS_API_KEY environment variable not set. Using placeholder news.")
+        return [{"title": f"Placeholder News for {ticker}", "description": "This is a placeholder news article.", "url": "#", "publishedAt": date.today().isoformat()}] * 3
+
+    try:
+        query = f"{ticker} AND ({industry} OR {exchange})"
+        params = {
+            'q': query,
+            'apiKey': news_api_key,
+            'sortBy': 'publishedAt',
+            'pageSize': 10  # Get the latest 10 articles
+        }
+        response = requests.get(news_endpoint, params=params)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        data = response.json()
+        if data.get('status') == 'ok' and data.get('articles'):
+            articles = data['articles']
+            logging.info(f"Successfully fetched {len(articles)} news articles for {ticker}")
+        else:
+            logging.warning(f"Could not fetch news for {ticker}. Response: {data}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching news for {ticker}: {e}")
+    return articles
+
+def get_similar_companies(industry: Optional[str]) -> List[str]:
+    """Retrieves a list of similar companies based on the industry."""
+    if not industry:
+        return ["No industry specified"]
+
+    # This is a very basic placeholder. In a real application,
+    # you would query a database or use an external API to find
+    # companies in the same or related industries.
+
+    similar_companies_data = {
+        "Technology": ["AAPL", "MSFT", "GOOGL", "AMZN"],
+        "Healthcare": ["JNJ", "PFE", "MRK"],
+        "Finance": ["JPM", "BAC", "WFC"],
+        # Add more industries and their common tickers
+    }
+
+    return similar_companies_data.get(industry, ["No similar companies found for this industry"])
+
+def store_news_articles(db_session, company_id, news_articles):
+    news_items_to_add = []
+    for article in news_articles:
+        published_at_utc = datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
+        published_at_sgt = published_at_utc.astimezone(pytz.timezone('Asia/Singapore'))
+        news = News(
+            company_id=company_id,
+            title=article['title'],
+            url=article['url'],
+            published_at=published_at_sgt,
+            summary=article['description']
+        )
+        news_items_to_add.append(news)
+    db_session.add_all(news_items_to_add)
+    db_session.commit()  # <--- Commit only once after adding all articles
+
+def scheduled_news_update(app):
+    """Fetches and stores the latest news for all companies at 6 AM SGT on weekdays."""
+    sgt = pytz.timezone('Asia/Singapore')
+    now_sgt = datetime.now(sgt)
+    if now_sgt.hour == 6 and now_sgt.weekday() < 5:  # Monday is 0 and Friday is 4
+        with app.app_context():
+            db = database.get_db()
+            all_news_to_add = []
+            companies = db.query(Company).all()
+            print(f"DEBUG (inside scheduled_news_update): ID of db object: {id(db)}")
+            print(f"DEBUG: Number of companies found: {len(companies)}")
+            for company in companies:
+                latest_news = fetch_latest_news(company.ticker_symbol)
+                print(f"Updating news for {company.ticker_symbol} at {datetime.now(sgt)}")
+                for article in latest_news:
+                    published_at_utc = datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
+                    published_at_sgt = published_at_utc.astimezone(pytz.timezone('Asia/Singapore'))
+                    news = News(
+                        company_id=company.company_id,
+                        title=article['title'],
+                        url=article['url'],
+                        published_at=published_at_sgt,
+                        summary=article['description']
+                    )
+                    all_news_to_add.append(news)
+
+            if all_news_to_add:
+                db.add_all(all_news_to_add)
+                db.commit()
+
+            db.close()
+            logging.info("Daily news update completed.")
+    else:
+        logging.info(f"Skipping news update. Current time is {now_sgt.strftime('%Y-%m-%d %H:%M:%S %Z%z')}")
+
+def get_stored_news(db: Session, company_id: int) -> List[News]:
+    """Retrieves stored news articles for a given company."""
+    return db.query(News).filter(News.company_id == company_id).order_by(News.published_date.desc()).all()
+
+
+
+def predict_financial_trends(financial_data: Optional[List[Dict[str, Any]]]) -> Dict[str, Optional[str]]:
+    """Analyzes historical financial data and predicts future trends (basic implementation)."""
+    trends: Dict[str, Optional[str]] = {}
+    if not financial_data or len(financial_data) < 2:
+        return {"revenue_growth": "Insufficient data", "profit_margin": "Insufficient data"}
+
+    # Basic trend analysis (simplistic and for illustrative purposes)
+    # More sophisticated methods would involve time series analysis.
+
+    # Revenue trend (using a placeholder 'revenue' key - adjust if your data has it)
+    revenue_present = all(item.get('revenue') is not None for item in financial_data)
+    if revenue_present:
+        latest_revenue = financial_data[-1].get('revenue')
+        previous_revenue = financial_data[-2].get('revenue')
+        if latest_revenue is not None and previous_revenue is not None and previous_revenue != 0:
+            growth_rate = (latest_revenue - previous_revenue) / previous_revenue
+            if growth_rate > 0.05:
+                trends["revenue_growth"] = "Positive"
+            elif growth_rate < -0.05:
+                trends["revenue_growth"] = "Negative"
+            else:
+                trends["revenue_growth"] = "Neutral"
+        else:
+            trends["revenue_growth"] = "Insufficient data for trend"
+    else:
+        trends["revenue_growth"] = "Revenue data not available"
+
+    # Profit margin trend (using a placeholder - you'll need actual profit data)
+    trends["profit_margin"] = "Analysis not implemented (requires profit data)"
+
+    return trends
+
+if __name__ == '__main__':
+    # Example usage (for testing purposes)
+    logging.basicConfig(level=logging.DEBUG)
+    ticker = "AAPL"
+    db_session = None # You would typically get a database session here
+
+    # Fetch latest news (you'll need a NEWS_API_KEY set)
+    news = fetch_latest_news(ticker, "Technology", "NASDAQ")
+    logging.info(f"Latest news for AAPL: {news}")
+
+    # Get similar companies
+    similar = get_similar_companies("Technology")
+    logging.info(f"Similar companies in Technology: {similar}")

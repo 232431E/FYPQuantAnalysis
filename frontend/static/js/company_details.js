@@ -36,15 +36,43 @@ async function loadCompanyInfo() {
                 // Update Top News
                 const topNewsList = document.getElementById('topNewsList');
                 topNewsList.innerHTML = '';
-                if (data.top_news && data.top_news.length > 0) {
-                    data.top_news.forEach(newsItem => {
+
+                if (data.company_news && data.company_news.length > 0) {
+                    topNewsList.append('<li class="font-weight-bold">Company News:</li>');
+                    data.company_news.forEach(news => {
                         const li = document.createElement('li');
                         li.className = 'news-item';
-                        li.textContent = newsItem;
+                        const link = document.createElement('a');
+                        link.href = news.url || '#'; // Add a default if URL is missing
+                        link.textContent = news.title || 'No Title'; // Add a default if title is missing
+                        link.target = '_blank';
+                        const dateSpan = document.createElement('span');
+                        dateSpan.textContent = news.publishedAt ? ` - ${new Date(news.publishedAt).toLocaleDateString()}` : '';
+                        li.appendChild(link);
+                        li.appendChild(dateSpan);
                         topNewsList.appendChild(li);
                     });
                 } else {
-                    topNewsList.innerHTML = '<li>No top news available.</li>';
+                    topNewsList.append('<li>No recent company news found.</li>');
+                }
+
+                if (data.industry_news && data.industry_news.length > 0) {
+                    topNewsList.append('<li class="mt-3 font-weight-bold">Industry News:</li>');
+                    data.industry_news.forEach(news => {
+                        const li = document.createElement('li');
+                        li.className = 'news-item';
+                        const link = document.createElement('a');
+                        link.href = news.url || '#';
+                        link.textContent = news.title || 'No Title';
+                        link.target = '_blank';
+                        const dateSpan = document.createElement('span');
+                        dateSpan.textContent = news.publishedAt ? ` - ${new Date(news.publishedAt).toLocaleDateString()}` : '';
+                        li.appendChild(link);
+                        li.appendChild(dateSpan);
+                        topNewsList.appendChild(li);
+                    });
+                } else {
+                    topNewsList.append('<li>No recent industry news found.</li>');
                 }
 
                 // Update Similar Companies

@@ -6,7 +6,7 @@ from datetime import date, datetime
 import pytest # Import pytest
 import time
 from backend.services.data_service import fetch_daily_news
-from backend.database import get_company_by_ticker
+from backend.database import create_company, get_company_by_ticker
 from backend.models.data_model import News # Import News
 
 class TestNewsRetrieval: # Remove unittest inheritance
