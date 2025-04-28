@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $(industryFilterDropdown).select2({
         placeholder: "Select Industries"
     });
+    // Initially hide the filters container
+    filtersContainer.style.display = 'none';
+    filtersContainer.style.maxHeight = '0';
 
     filtersToggle.addEventListener('click', () => {
         if (filtersContainer.style.display === 'none' || filtersContainer.style.display === '') {
@@ -209,6 +212,7 @@ function displayData(data, page) {
         nextPageButton.disabled = true;
     }
 }
+
 filtersToggle.addEventListener('click', () => {
     if (filtersContainer.style.display === 'none' || filtersContainer.style.display === '') {
         filtersContainer.style.display = 'flex'; // Use flex for display
@@ -225,47 +229,37 @@ filtersToggle.addEventListener('click', () => {
 
 function applyFilters() {
     console.log('applyFilters function called');
-    let filteredData = [...allFinancialData];
 
-    const searchTerm = companySearchInput.value;
+    // Get the search term
+    const searchTerm = document.getElementById('companySearch').value.toLowerCase();
     console.log('Search Term:', searchTerm);
 
-    const selectedIndustries = Array.from(document.querySelectorAll('#industryCheckboxes input[type="checkbox"]:checked'))
-        .map(checkbox => checkbox.value);
+    // Get selected industries
+    const industryCheckboxes = document.querySelectorAll('#industryCheckboxes input[type="checkbox"]:checked');
+    const selectedIndustries = Array.from(industryCheckboxes).map(checkbox => checkbox.value);
     console.log('Selected Industries:', selectedIndustries);
 
-    const dateFrom = flatpickrFrom.selectedDates[0];
-    const dateTo = flatpickrTo.selectedDates[0];
+    // Get selected dates
+    const dateFromInput = document.getElementById('dateFrom');
+    const dateToInput = document.getElementById('dateTo');
+    const dateFrom = flatpickrFrom ? flatpickrFrom.selectedDates[0] : undefined;
+    const dateTo = flatpickrTo ? flatpickrTo.selectedDates[0] : undefined;
     console.log('Date From:', dateFrom, 'Date To:', dateTo);
 
-    filteredData = filteredData.filter(item =>
-        item.ticker_symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.company_name && item.company_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-    console.log('After Search Filter:', filteredData);
+    let filteredData = [...allFinancialData];
 
-    // Industry filter
-    if (selectedIndustries.length > 0) {
-        console.log('Filtering by industries:', selectedIndustries);
-        filteredData = filteredData.filter(item => selectedIndustries.includes(item.industry));
-        console.log('After Industry Filter:', filteredData);
-    }
-
-    // Date range filter
-    console.log('Date From (in applyFilters):', dateFrom);
-    console.log('Date To (in applyFilters):', dateTo);
-    if (dateFrom && dateTo) {
-        filteredData = filteredData.filter(item => {
-            const itemDate = new Date(item.date);
-            return itemDate >= dateFrom && itemDate <= dateTo;
-        });
-        console.log('After Date Filter:', filteredData);
-    } else if (dateFrom) {
-        filteredData = filteredData.filter(item => new Date(item.date) >= dateFrom);
-    } else if (dateTo) {
-        filteredData = filteredData.filter(item => new Date(item.date) <= dateTo);
-    }
-    console.log('After Date Filter:', filteredData);
+    // Apply filters
+    filteredData = filteredData.filter(item => {
+        const companyNameLower = item.company_name ? item.company_name.toLowerCase() : '';
+        const searchMatch = searchTerm === '' || item.ticker_symbol.toLowerCase().includes(searchTerm) || companyNameLower.includes(searchTerm);
+        const industryMatch = selectedIndustries.length === 0 || selectedIndustries.includes(item.industry);
+        const dateMatch = (!dateFrom && !dateTo) ||
+                           (dateFrom && !dateTo && new Date(item.date) >= dateFrom) ||
+                           (!dateFrom && dateTo && new Date(item.date) <= dateTo) ||
+                           (dateFrom && dateTo && new Date(item.date) >= dateFrom && new Date(item.date) <= dateTo);
+        return searchMatch && industryMatch && dateMatch;
+    });
+    console.log('Final Filtered Data:', filteredData);
 
     filteredFinancialData = filteredData;
     currentPage = 1;

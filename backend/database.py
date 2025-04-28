@@ -12,7 +12,7 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 Base = declarative_base()  # Define Base *before* importing models
 
 # Import your models here
-from backend.models import User, Alert, Feedback, Prompt, Report, Company, FinancialData, News
+from backend.models import User, Alert, Feedback, PromptVersion, Report, Company, FinancialData, News
 
 
 def get_engine():
@@ -46,13 +46,11 @@ from sqlalchemy.orm import Session
 from backend.models.alert_model import Alert
 from backend.models.data_model import Company, FinancialData, News
 from backend.models.feedback_model import Feedback
-from backend.models.prompt_model import Prompt
+from backend.models.prompt_model import PromptVersion
 from backend.models.report_model import Report
 from backend.models.user_model import User
 from sqlalchemy import func, text
 from typing import Optional, List, Dict, Any
-
-
 
 # Helper function to handle common session operations
 def _commit_and_refresh(db: Session, instance: Any) -> None:
@@ -317,32 +315,56 @@ def delete_feedback(db: Session, feedback_id: int) -> bool:
     return False
 
 # --- Prompt CRUD Operations ---
-def get_prompt(db: Session, prompt_id: int) -> Optional[Prompt]:
-    """Gets a prompt by its ID."""
-    return db.query(Prompt).filter(Prompt.prompt_id == prompt_id).first()
+def create_prompt_version(db: Session, user_id: int, original_prompt: str, prompt_text: str):
+    latest_prompt = db.query(PromptVersion).order_by(PromptVersion.prompt_id.desc()).first()
+    next_prompt_id = 1 if not latest_prompt else latest_prompt.prompt_id + 1
+    db.query(PromptVersion).filter(PromptVersion.prompt_id == next_prompt_id, PromptVersion.operative == True).update({PromptVersion.operative: False})
+    latest_version = db.query(PromptVersion).filter(PromptVersion.prompt_id == next_prompt_id).order_by(PromptVersion.version.desc()).first()
+    next_version = 1 if not latest_version else latest_version.version + 1
+    db_prompt_version = PromptVersion(
+        prompt_id=next_prompt_id,
+        user_id=user_id,
+        version=next_version,
+        original_prompt=original_prompt,
+        prompt_text=prompt_text,
+        operative=True
+    )
+    db.add(db_prompt_version)
+    _commit_and_refresh(db, db_prompt_version)
+    return db_prompt_version
 
-def create_prompt(db: Session, prompt_data: Dict[str, Any]) -> Prompt:
-    """Creates a new prompt record."""
-    db_prompt = Prompt(**prompt_data)
-    db.add(db_prompt)
-    _commit_and_refresh(db, db_prompt)
-    return db_prompt
-
-def update_prompt(db: Session, prompt_id: int, prompt_data: Dict[str, Any]) -> Optional[Prompt]:
-    """Updates an existing prompt record."""
-    db_prompt = get_prompt(db, prompt_id)
-    if db_prompt:
-        for key, value in prompt_data.items():
-            setattr(db_prompt, key, value)
-        _commit_and_refresh(db, db_prompt)
-        return db_prompt
+def update_prompt_version(db: Session, prompt_version_id: int, user_id: int, prompt_text: str):
+    db_prompt_version = db.query(PromptVersion).filter(PromptVersion.prompt_version_id == prompt_version_id).first()
+    if db_prompt_version:
+        db.query(PromptVersion).filter(PromptVersion.prompt_id == db_prompt_version.prompt_id, PromptVersion.operative == True).update({PromptVersion.operative: False})
+        latest_version = db.query(PromptVersion).filter(PromptVersion.prompt_id == db_prompt_version.prompt_id).order_by(PromptVersion.version.desc()).first()
+        next_version = latest_version.version + 1 if latest_version else 1
+        new_prompt_version = PromptVersion(
+            prompt_id=db_prompt_version.prompt_id,
+            user_id=user_id,
+            version=next_version,
+            original_prompt=db_prompt_version.original_prompt,
+            prompt_text=prompt_text,
+            operative=True
+        )
+        db.add(new_prompt_version)
+        _commit_and_refresh(db, new_prompt_version)
+        return new_prompt_version
     return None
 
-def delete_prompt(db: Session, prompt_id: int) -> bool:
-    """Deletes a prompt record."""
-    db_prompt = get_prompt(db, prompt_id)
-    if db_prompt:
-        db.delete(db_prompt)
+def get_prompt_version(db: Session, prompt_version_id: int):
+    return db.query(PromptVersion).filter(PromptVersion.prompt_version_id == prompt_version_id).first()
+
+def get_prompt_versions_by_prompt_id(db: Session, prompt_id: int, skip: int = 0, limit: int = 100):
+    return db.query(PromptVersion).filter(PromptVersion.prompt_id == prompt_id).offset(skip).limit(limit).all()
+
+def get_operative_prompts(db: Session):
+    return db.query(PromptVersion).filter(PromptVersion.operative == True).all()
+
+def delete_prompt_version(db: Session, prompt_version_id: int):
+    db_prompt_version = db.query(PromptVersion).filter(PromptVersion.prompt_version_id == prompt_version_id).first()
+    if db_prompt_version:
+        db.delete(db_prompt_version)
         db.commit()
         return True
     return False

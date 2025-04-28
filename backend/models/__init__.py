@@ -2,7 +2,7 @@
 from .user_model import User
 from .alert_model import Alert
 from .feedback_model import Feedback
-from .prompt_model import Prompt, prompt_model_init  # Import the init function
+from .prompt_model import PromptVersion, prompt_model_init  # Import the init function
 from .report_model import Report, report_model_init
 from .data_model import Company, FinancialData, News, data_model_init
 
@@ -17,4 +17,4 @@ News  # noqa: F401
 User  # noqa: F401
 Alert  # noqa: F401
 Feedback  # noqa: F401
-Prompt  # noqa: F401
+PromptVersion  # noqa: F401

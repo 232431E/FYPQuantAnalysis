@@ -11,6 +11,7 @@ sys.path.append(parent_dir)
 import unittest
 from unittest.mock import patch, MagicMock
 from datetime import date
+from backend import tasks
 from backend.services import data_service
 fetch_latest_news = data_service.fetch_latest_news
 

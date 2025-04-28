@@ -19,4 +19,4 @@ class User(Base):
     #  Add back_populates
     reports = relationship("Report", back_populates="user")
     feedbacks = relationship("Feedback", back_populates="user")
-    prompts = relationship("Prompt", back_populates="user") # add back_populates
+    prompt_versions = relationship("PromptVersion", back_populates="user") # add back_populates

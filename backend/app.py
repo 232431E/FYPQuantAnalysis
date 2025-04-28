@@ -1,5 +1,8 @@
+#backend/app.py
 import sys
 import os
+
+import pytz
 
 # Get the absolute path to the directory containing app.py
 app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,8 +19,9 @@ from backend import database
 from backend.database import init_db, get_db
 from backend.models import data_model_init, report_model_init, prompt_model_init
 from sqlalchemy.orm import Session
-from backend.services.data_service import fetch_latest_news, scheduled_news_update
+from backend.services.data_service import fetch_latest_news
 from apscheduler.schedulers.background import BackgroundScheduler
+from backend.tasks import daily_news_update
 
 def create_app():
     app = Flask(__name__,
@@ -67,7 +71,7 @@ app.register_blueprint(api_bp, url_prefix='/api')
 scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Singapore'))
 
 # Schedule the news update job for 6:00 AM SGT on weekdays (Monday-Friday)
-scheduler.add_job(func=scheduled_news_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
+scheduler.add_job(func=daily_news_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
 
 # Start the scheduler (this will run in the background)
 scheduler.start()

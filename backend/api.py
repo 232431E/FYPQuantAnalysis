@@ -8,7 +8,6 @@ from backend.services.data_service import (
     get_similar_companies,
     store_news_articles,
     get_stored_news,
-    scheduled_news_update,
     predict_financial_trends,
     analyze_news_sentiment,
     get_similar_companies
