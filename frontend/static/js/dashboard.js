@@ -14,6 +14,7 @@ const dateToInput = document.getElementById('dateTo');
 const applyFiltersButton = document.getElementById('applyFiltersButton');
 const filtersToggle = document.getElementById('filtersToggle');
 const filtersContainer = document.getElementById('filtersContainer');
+const industryCheckboxesContainer = document.getElementById('industryCheckboxes'); // Get the container for checkboxes
 
 let allFinancialData = [];
 let filteredFinancialData = []; // To hold data after search and filters
@@ -47,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     applyFiltersButton.addEventListener('click', applyFilters);
+    displayAllFinancialData();
 });
 
 async function fetchAndStoreData() {
@@ -80,18 +82,28 @@ async function displayAllFinancialData() {
     latestDataDiv.textContent = 'Fetching all financial data...';
     try {
         const response = await fetch('/api/data/dashboard/latest');
-        const data = await response.json();
-        console.log("Data received from backend:", data);
-        allFinancialData = data;
-        populateIndustryFilter(allFinancialData);
-        applyFilters(); // Apply initial filters if any
+        if (response.status === 202) {
+            const result = await response.json();
+            latestDataDiv.textContent = result.message || 'Checking for updates... Data will refresh.';
+            // Optionally, you can set a timeout to refresh the page after a short delay
+            setTimeout(() => {
+                window.location.reload(); // Reload the page to fetch the updated data
+            }, 5000); // Adjust the delay as needed
+        } else if (response.ok) {
+            const data = await response.json();
+            console.log("Data received from backend:", data);
+            allFinancialData = data;
+            populateIndustryFilter(allFinancialData);
+            applyFilters(); // Apply initial filters if any
+        } else {
+            latestDataDiv.textContent = `Error fetching all financial data: ${response.statusText}`;
+        }
     } catch (error) {
         latestDataDiv.textContent = `Error fetching all financial data: ${error.message}`;
     }
 }
 
 function populateIndustryFilter(data) {
-    const industryCheckboxesContainer = document.getElementById('industryCheckboxes');
     industryCheckboxesContainer.innerHTML = ''; // Clear any existing checkboxes
     industries.clear();
 
@@ -116,6 +128,8 @@ function populateIndustryFilter(data) {
             industryCheckboxesContainer.appendChild(formCheck);
         }
     }
+    // Initialize Select2 after populating (if you still want it)
+    $(industryFilterDropdown).val(null).trigger('change');
 }
 
 function displayData(data, page) {
@@ -213,35 +227,19 @@ function displayData(data, page) {
     }
 }
 
-filtersToggle.addEventListener('click', () => {
-    if (filtersContainer.style.display === 'none' || filtersContainer.style.display === '') {
-        filtersContainer.style.display = 'flex'; // Use flex for display
-        filtersContainer.style.maxHeight = filtersContainer.scrollHeight + 'px';
-    } else {
-        filtersContainer.style.maxHeight = '0';
-        setTimeout(() => {
-            if (filtersContainer.style.maxHeight === '0px') {
-                filtersContainer.style.display = 'none';
-            }
-        }, 300);
-    }
-});
-
 function applyFilters() {
     console.log('applyFilters function called');
 
     // Get the search term
-    const searchTerm = document.getElementById('companySearch').value.toLowerCase();
+    const searchTerm = companySearchInput.value.toLowerCase();
     console.log('Search Term:', searchTerm);
 
-    // Get selected industries
-    const industryCheckboxes = document.querySelectorAll('#industryCheckboxes input[type="checkbox"]:checked');
-    const selectedIndustries = Array.from(industryCheckboxes).map(checkbox => checkbox.value);
+    // Get selected industries from checkboxes
+    const selectedIndustries = Array.from(industryCheckboxesContainer.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(checkbox => checkbox.value);
     console.log('Selected Industries:', selectedIndustries);
 
     // Get selected dates
-    const dateFromInput = document.getElementById('dateFrom');
-    const dateToInput = document.getElementById('dateTo');
     const dateFrom = flatpickrFrom ? flatpickrFrom.selectedDates[0] : undefined;
     const dateTo = flatpickrTo ? flatpickrTo.selectedDates[0] : undefined;
     console.log('Date From:', dateFrom, 'Date To:', dateTo);

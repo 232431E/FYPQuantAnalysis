@@ -1,5 +1,6 @@
+#backend/api.py
 from flask import Blueprint, jsonify
-from backend.database import get_db, get_company_by_ticker
+from backend.database import get_all_companies, get_db, get_company_by_ticker
 from backend.services.data_service import (
     fetch_financial_data,
     fetch_historical_fundamentals,
@@ -9,13 +10,59 @@ from backend.services.data_service import (
     store_news_articles,
     get_stored_news,
     predict_financial_trends,
-    analyze_news_sentiment,
     get_similar_companies
+)
+from backend.services.llm_service import (
+    analyze_news_sentiment_gemini,
+    analyze_news_sentiment,
+    analyze_news_sentiment_perplexity
 )
 import os
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+@api_bp.route('/data/dashboard/latest', methods=['GET'])
+def get_latest_data():
+    """
+    Retrieves the latest financial data for all companies for the dashboard.
+    """
+    db = get_db()
+    try:
+        companies = get_all_companies(db)  # Get all companies
+        if not companies:
+            return jsonify([]), 200  # Return empty list if no companies
+
+        all_financial_data = []
+        for company in companies:
+            # Fetch the latest financial data for each company
+            latest_data = db.execute(
+                """
+                SELECT
+                    c.ticker_symbol,
+                    c.company_name,
+                    c.industry,
+                    fd.date,
+                    fd.open,
+                    fd.high,
+                    fd.low,
+                    fd.close,
+                    fd.volume
+                FROM company c
+                JOIN financial_data fd ON c.company_id = fd.company_id
+                WHERE c.company_id = ?
+                ORDER BY fd.date DESC
+                LIMIT 1
+                """,
+                (company.company_id,)
+            ).fetchone()
+
+            if latest_data:
+                all_financial_data.append(dict(latest_data))
+        return jsonify(all_financial_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
 @api_bp.route('/company/<ticker>', methods=['GET'])
 def get_company_info(ticker):
     db = get_db()

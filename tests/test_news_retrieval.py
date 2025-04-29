@@ -1,11 +1,11 @@
 #tests/test_news_retrieval.py
-
+# basic News retrival test without automation
 import unittest
 from unittest.mock import patch, MagicMock
 from datetime import date, datetime
 import pytest # Import pytest
 import time
-from backend.services.data_service import fetch_daily_news
+from backend.tasks import daily_news_update
 from backend.database import create_company, get_company_by_ticker
 from backend.models.data_model import News # Import News
 
@@ -28,7 +28,7 @@ class TestNewsRetrieval: # Remove unittest inheritance
         assert test_company is not None
 
         today = date.today()
-        fetch_daily_news(db_session, "YHOO", today)
+        daily_news_update(db_session, "YHOO", today)
 
         retrieved_news = db_session.query(News).filter_by(company_id=test_company.company_id).all()
         assert len(retrieved_news) == 2
@@ -48,7 +48,7 @@ class TestNewsRetrieval: # Remove unittest inheritance
 
 
         today = date.today()
-        fetch_daily_news(db_session, "YHOO", today)
+        daily_news_update(db_session, "YHOO", today)
         retrieved_news = db_session.query(News).filter_by(company_id=test_company.company_id).all()
         assert len(retrieved_news) == 0
 
@@ -68,7 +68,7 @@ class TestNewsRetrieval: # Remove unittest inheritance
         db_session.add(existing_news)
         db_session.commit()
 
-        fetch_daily_news(db_session, "YHOO", today)
+        daily_news_update(db_session, "YHOO", today)
         retrieved_news = db_session.query(News).filter_by(company_id=test_company.company_id).all()
         assert len(retrieved_news) == 1
         assert retrieved_news[0].title == "Existing News"

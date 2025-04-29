@@ -1,13 +1,41 @@
-from flask import Blueprint, jsonify, request, session
-from backend.database import get_db
+# backend/routes/data_routes.py
+import datetime
+from flask import Blueprint, current_app, jsonify, request, session
+import pytz
+from backend.database import get_all_companies, get_db
 from sqlalchemy.orm import Session
-from backend.models import data_model, Company, FinancialData  # Import necessary models
+from backend.models import data_model, Company, FinancialData
 from backend.services import data_service
-from sqlalchemy import text
+from backend.tasks import update_all_financial_data  # Import the task function
+from sqlalchemy import func, text
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
 data_routes_bp = Blueprint('data', __name__, url_prefix='/api/data')
+
+@data_routes_bp.before_app_first_request
+def initialize_update_flag():
+    current_app.update_triggered = False
+    
+def needs_update(db: Session, company_id: int, threshold_hours: int = 24) -> bool:
+    """Checks if the financial data for a company needs updating."""
+    most_recent_data = db.query(func.max(FinancialData.date)).filter(FinancialData.company_id == company_id).scalar()
+    if not most_recent_data:
+        return True  # No data exists, so needs update
+
+    sgt = pytz.timezone('Asia/Singapore')
+    print(f"Type of datetime module: {type(datetime)}") # Add this line
+    print(f"Attributes of datetime module: {dir(datetime)}") # Add this line
+    now_sgt = datetime.datetime.now(sgt).date()
+    if isinstance(most_recent_data, datetime.date):
+        data_date_sgt = most_recent_data
+    elif most_recent_data:
+        data_date_sgt = most_recent_data.date()
+    else:
+        return True # Should have been caught by the first if, but for extra safety
+
+    # Check if the latest data is from a previous day in SGT
+    return data_date_sgt < now_sgt
 
 @data_routes_bp.route('/ingest/<ticker>', methods=['POST'])
 def ingest_data(ticker):
@@ -25,11 +53,35 @@ def ingest_data(ticker):
     finally:
         db.close()
 
+@data_routes_bp.route('/ingest/all', methods=['POST'])
+def ingest_all_data():
+    """Triggers the check and update of financial data for ALL companies."""
+    print("Received request to check and update data for all companies (via task)")
+    from backend import create_app  # Import create_app here to avoid circular dependency
+    app = create_app()
+    update_all_financial_data(app)  # Call the task function
+    return jsonify({"message": "Initiated check and update of financial data for all companies."}), 200
+
 @data_routes_bp.route('/dashboard/latest', methods=['GET'])
 def get_all_financial_data():
-    """Retrieves ALL financial data for all companies."""
+    """Retrieves ALL financial data for all companies, checking for updates."""
     db: Session = get_db()
     try:
+        companies = get_all_companies(db)
+        needs_any_update = False
+        for company in companies:
+            if needs_update(db, company.company_id):
+                needs_any_update = True
+                break  # No need to check further if at least one needs update
+
+        if needs_any_update:
+            print("One or more companies need data update. Triggering update for all...")
+            from backend import create_app
+            app = create_app()
+            update_all_financial_data(app)
+            current_app.update_triggered = True
+            return jsonify({"message": "Checking for data updates and initiating if needed. Data will refresh shortly."}), 202  # Accepted, processing
+
         query = text("""
             SELECT
                 c.ticker_symbol,
@@ -43,7 +95,7 @@ def get_all_financial_data():
                 fd.volume
             FROM companies c
             JOIN financial_data fd ON c.company_id = fd.company_id
-            ORDER BY fd.date DESC; -- Order by date, or any order you prefer
+            ORDER BY fd.date DESC;
         """)
         all_data = db.execute(query).fetchall()
         results = []
@@ -66,7 +118,7 @@ def get_all_financial_data():
         return jsonify({"error": "Failed to fetch all financial data"}), 500
     finally:
         db.close()
-        
+
 @data_routes_bp.route('/companies/<int:company_id>/financials', methods=['GET'])
 def get_company_financial_data(company_id):
     period = request.args.get('period', 'daily')

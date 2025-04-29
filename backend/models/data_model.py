@@ -14,12 +14,10 @@ class Company(Base):
     industry = Column(String(255))
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
     financial_data = relationship("FinancialData", back_populates="company")
     reports = relationship("Report", back_populates="company")
     alerts = relationship("Alert", back_populates="company")
     news_items = relationship("News", back_populates="company")
-
 
 class FinancialData(Base):
     __tablename__ = 'financial_data'
@@ -39,9 +37,7 @@ class FinancialData(Base):
     cash_flow = Column(Numeric(15, 2))
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
     company = relationship("Company", back_populates="financial_data")
-
 
 class News(Base):
     __tablename__ = 'news'
@@ -53,7 +49,6 @@ class News(Base):
     summary = Column(Text)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
     company = relationship("Company", back_populates="news_items")
 
 def data_model_init():

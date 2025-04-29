@@ -5,7 +5,8 @@ from backend.services.data_service import (
     fetch_financial_data, 
     store_financial_data, 
     fetch_latest_news, 
-    store_news_articles
+    store_news_articles,
+    needs_financial_data_update
 )
 import logging
 from datetime import datetime
@@ -14,30 +15,54 @@ from flask import Flask
 
 logger = logging.getLogger(__name__)
 
+def update_all_financial_data(app: Flask):
+    """Checks and updates financial data for all companies if needed."""
+    logger.info("Starting on-demand financial data update check for all companies...")
+    with app.app_context():
+        db = get_db()
+        try:
+            companies = get_all_companies(db)
+            for company in companies:
+                ticker = company.ticker_symbol
+                company_id = company.company_id
+                logger.info(f"Checking if financial data needs update for {ticker}...")
+                if needs_financial_data_update(db, company_id):
+                    logger.info(f"Financial data for {ticker} is outdated or missing, attempting to update...")
+                    success = store_financial_data(db, ticker)
+                    if success:
+                        logger.info(f"Successfully updated financial data for {ticker}")
+                    else:
+                        logger.warning(f"Failed to update financial data for {ticker}")
+                else:
+                    logger.info(f"Financial data for {ticker} is already up to date.")
+        finally:
+            db.close()
+    logger.info("On-demand financial data update check finished.")
+
 def daily_financial_data_update(app: Flask):
     sgt = pytz.timezone('Asia/Singapore')
     now = datetime.now(sgt)
     if now.weekday() < 5:  # Monday to Friday (0-4)
         if now.hour == 6 and now.minute == 0:
-            logger.info("Starting daily financial data update...")
+            logger.info("Starting scheduled daily financial data update...")
             with app.app_context():
                 db = get_db()
                 try:
                     companies = get_all_companies(db)
                     for company in companies:
-                        logger.info(f"Fetching and storing financial data for {company.ticker_symbol}...")
+                        logger.info(f"Fetching and storing financial data for {company.ticker_symbol} (scheduled)...")
                         success = store_financial_data(db, company.ticker_symbol)
                         if success:
-                            logger.info(f"Successfully updated financial data for {company.ticker_symbol}")
+                            logger.info(f"Successfully updated financial data for {company.ticker_symbol} (scheduled)")
                         else:
-                            logger.warning(f"Failed to update financial data for {company.ticker_symbol}")
+                            logger.warning(f"Failed to update financial data for {company.ticker_symbol} (scheduled)")
                 finally:
                     db.close()
-            logger.info("Daily financial data update finished.")
+            logger.info("Scheduled daily financial data update finished.")
         else:
-            logger.debug(f"Skipping financial data update. Current time is {now.strftime('%H:%M')} SGT.")
+            logger.debug(f"Skipping scheduled financial data update. Current time is {now.strftime('%H:%M')} SGT.")
     else:
-        logger.debug(f"Skipping financial data update. It's the weekend ({now.strftime('%A')}).")
+        logger.debug(f"Skipping scheduled financial data update. It's the weekend ({now.strftime('%A')}).")
 
 # backend/tasks.py
 def daily_news_update(app: Flask):
