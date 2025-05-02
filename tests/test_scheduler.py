@@ -1,4 +1,5 @@
 # tests/test_news_retrieval.py
+#test automated for news retrieval
 import unittest
 from unittest.mock import patch, MagicMock
 import os

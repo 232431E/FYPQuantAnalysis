@@ -40,8 +40,8 @@ class TestDashboardAPI(TestCase):
 
             # Add news items once in setUpClass
             cls.news_items = [
-                data_model.News(company_id=cls.test_company_id, title="News 1", url="http://news1.com"),
-                data_model.News(company_id=cls.test_company_id, title="News 2", url="http://news2.com")
+                data_model.News(company_id=cls.test_company_id, title="News 1", link="http://news1.com"),
+                data_model.News(company_id=cls.test_company_id, title="News 2", link="http://news2.com")
             ]
             db.add_all(cls.news_items)
             db.commit()
@@ -106,8 +106,8 @@ class TestDashboardAPI(TestCase):
 
         # Add news items
         self.news_items = [
-            data_model.News(company_id=TestDashboardAPI.test_company_id, title="News 1", url="http://news1.com"),
-            data_model.News(company_id=TestDashboardAPI.test_company_id, title="News 2", url="http://news2.com")
+            data_model.News(company_id=TestDashboardAPI.test_company_id, title="News 1", link="http://news1.com"),
+            data_model.News(company_id=TestDashboardAPI.test_company_id, title="News 2", link="http://news2.com")
         ]
         self.db.add_all(self.news_items)
         self.db.commit()

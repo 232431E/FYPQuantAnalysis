@@ -13,10 +13,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 data_routes_bp = Blueprint('data', __name__, url_prefix='/api/data')
 
-@data_routes_bp.before_app_first_request
-def initialize_update_flag():
-    current_app.update_triggered = False
-    
 def needs_update(db: Session, company_id: int, threshold_hours: int = 24) -> bool:
     """Checks if the financial data for a company needs updating."""
     most_recent_data = db.query(func.max(FinancialData.date)).filter(FinancialData.company_id == company_id).scalar()
@@ -24,8 +20,8 @@ def needs_update(db: Session, company_id: int, threshold_hours: int = 24) -> boo
         return True  # No data exists, so needs update
 
     sgt = pytz.timezone('Asia/Singapore')
-    print(f"Type of datetime module: {type(datetime)}") # Add this line
-    print(f"Attributes of datetime module: {dir(datetime)}") # Add this line
+    print(f"Type of datetime module: {type(datetime)}") # Add this line for debugging (can remove later)
+    print(f"Attributes of datetime module: {dir(datetime)}") # Add this line for debugging (can remove later)
     now_sgt = datetime.datetime.now(sgt).date()
     if isinstance(most_recent_data, datetime.date):
         data_date_sgt = most_recent_data
@@ -64,24 +60,9 @@ def ingest_all_data():
 
 @data_routes_bp.route('/dashboard/latest', methods=['GET'])
 def get_all_financial_data():
-    """Retrieves ALL financial data for all companies, checking for updates."""
+    """Retrieves ALL financial data for all companies."""
     db: Session = get_db()
     try:
-        companies = get_all_companies(db)
-        needs_any_update = False
-        for company in companies:
-            if needs_update(db, company.company_id):
-                needs_any_update = True
-                break  # No need to check further if at least one needs update
-
-        if needs_any_update:
-            print("One or more companies need data update. Triggering update for all...")
-            from backend import create_app
-            app = create_app()
-            update_all_financial_data(app)
-            current_app.update_triggered = True
-            return jsonify({"message": "Checking for data updates and initiating if needed. Data will refresh shortly."}), 202  # Accepted, processing
-
         query = text("""
             SELECT
                 c.ticker_symbol,

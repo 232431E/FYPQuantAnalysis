@@ -21,7 +21,7 @@ from backend.models import data_model_init, report_model_init, prompt_model_init
 from sqlalchemy.orm import Session
 from backend.services.data_service import fetch_latest_news
 from apscheduler.schedulers.background import BackgroundScheduler
-from backend.tasks import daily_news_update
+from backend.tasks import daily_news_update, update_all_financial_data
 
 def create_app():
     app = Flask(__name__,
@@ -73,6 +73,9 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Singapore'))
 # Schedule the news update job for 6:00 AM SGT on weekdays (Monday-Friday)
 scheduler.add_job(func=daily_news_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
 
+# Schedule the financial data update job for 6:00 AM SGT on weekdays (Monday-Friday)
+scheduler.add_job(func=update_all_financial_data, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
+
 # Start the scheduler (this will run in the background)
 scheduler.start()
 
@@ -82,7 +85,7 @@ def shutdown_scheduler():
     scheduler.shutdown()
 atexit.register(shutdown_scheduler)
 
-print("Scheduler started for daily news updates at 6:00 AM SGT on weekdays.")
+print("Scheduler started for daily news updates at 6:00AM SGT on weekdays.")
 
 @app.route('/')
 def index():

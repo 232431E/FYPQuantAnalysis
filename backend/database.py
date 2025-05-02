@@ -14,7 +14,6 @@ Base = declarative_base()  # Define Base *before* importing models
 # Import your models here
 from backend.models import User, Alert, Feedback, PromptVersion, Report, Company, FinancialData, News
 
-
 def get_engine():
     if os.environ.get('TESTING'):
         return create_engine(TEST_DATABASE_URL)

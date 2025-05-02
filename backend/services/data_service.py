@@ -14,18 +14,30 @@ import pytz
 
 logging.basicConfig(level=logging.INFO)
 
-def fetch_financial_data(ticker: str, period: str = "5y") -> Optional[List[Dict[str, Any]]]:
-    """Fetches historical OHLCV data from yfinance."""
+def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] = None, end: Optional[date] = None) -> Optional[List[Dict[str, Any]]]:
+    """Fetches historical OHLCV data from yfinance, allowing for period or specific date range."""
     try:
-        data = yf.download(ticker, period=period)
+        if period and not start and not end:
+            data = yf.download(ticker, period=period)
+        elif start and end and not period:
+            data = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'))
+        else:
+            logging.error(f"Invalid parameters for fetch_financial_data. Must provide either 'period' or both 'start' and 'end'.")
+            return None
+
         if data.empty:
-            logging.warning(f"No OHLCV data received from yfinance for {ticker} ({period})")
+            logging.warning(f"No OHLCV data received from yfinance for {ticker} (period: {period}, start: {start}, end: {end})")
             return None
         financial_data_list = []
         for index, row in data.iterrows():
             try:
+                if isinstance(index, pd.Timestamp):
+                    data_date = index.to_pydatetime().date()
+                else:
+                    data_date = index
+
                 financial_data_list.append({
-                    "date": index.to_pydatetime().date(),
+                    "date": data_date,
                     "open": row['Open'].item(),
                     "high": row['High'].item(),
                     "low": row['Low'].item(),
@@ -37,10 +49,14 @@ def fetch_financial_data(ticker: str, period: str = "5y") -> Optional[List[Dict[
                 continue
         return financial_data_list
     except Exception as e:
-        logging.error(f"Error fetching OHLCV data for {ticker} ({period}): {e}")
-        return None
-
-
+        if "YFPricesMissingError" in str(e):
+            logging.warning(f"No data found for {ticker}: {e}")
+            return []
+        else:
+            logging.error(
+                f"Error fetching OHLCV data for {ticker} (period: {period}, start: {start}, end: {end}): {e}")
+            return None
+    
 def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[date, Dict[str, Any]]]:
     """Fetches historical fundamental data (annual) from yfinance."""
     try:
@@ -99,9 +115,8 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
         logging.error(f"Error fetching historical fundamental data for {ticker}: {e}")
         return None
 
-
-def store_financial_data(db: Session, ticker: str) -> bool:
-    """Stores historical OHLCV and annual fundamental data for a given ticker (up to 5 years)."""
+def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
+    """Stores historical OHLCV and annual fundamental data for a given ticker, linking them by date."""
     company = database.get_company_by_ticker(db, ticker)
     if not company:
         company_info = yf.Ticker(ticker).info
@@ -123,7 +138,7 @@ def store_financial_data(db: Session, ticker: str) -> bool:
             return False
 
     if company:
-        ohlcv_data_list = fetch_financial_data(ticker, period="5y")
+        ohlcv_data_list = fetch_financial_data(ticker, period=period)  # Fetch OHLCV data with the specified period
         fundamental_data_map = fetch_historical_fundamentals(ticker, years=5)
 
         if company and ohlcv_data_list:
@@ -198,7 +213,7 @@ def needs_financial_data_update(db: Session, company_id: int, threshold_hours: i
         FinancialData.company_id == company_id).scalar()
     if not most_recent_data:
         return True  # No data exists, so needs update
-    
+
     sgt = pytz.timezone('Asia/Singapore')
     now_sgt = datetime.now(sgt).date()
     data_date_sgt = most_recent_data
