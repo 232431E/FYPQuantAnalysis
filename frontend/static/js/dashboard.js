@@ -1,3 +1,4 @@
+/***dashboard.js**/
 const companySearchInput = document.getElementById('companySearch');
 const refreshTableButton = document.getElementById('refreshTable');
 const industryFilterDropdown = document.getElementById('industryFilter');
@@ -92,6 +93,10 @@ async function displayAllFinancialData() {
         } else if (response.ok) {
             const data = await response.json();
             console.log("Data received from backend:", data);
+            if (!data || data.length === 0) {  // ADDED THIS CONDITION
+                latestDataDiv.textContent = "No financial data available (from backend).";
+                return; // Stop processing if no data
+            }
             allFinancialData = data;
             populateIndustryFilter(allFinancialData);
             applyFilters(); // Apply initial filters if any
@@ -135,6 +140,7 @@ function populateIndustryFilter(data) {
 function displayData(data, page) {
     const latestDataDiv = document.getElementById('latestDataDisplay');
     const paginationWrapper = document.querySelector('.pagination');
+    console.log("displayData called with:", data, "and page:", page); // ADDED THIS LINE
     if (data && data.length > 0) {
         data.sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -145,7 +151,7 @@ function displayData(data, page) {
         let html = '<table class="table table-striped">';
         html += '<thead><tr><th>Company</th><th>Date</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr></thead><tbody>';
         for (const item of pagedData) {
-            html += `<tr><td><a href="/company/${item.ticker_symbol}">${item.ticker_symbol}</a></td>`;
+            html += `<tr><td><a href="/company_details.html?ticker=${item.ticker_symbol}">${item.ticker_symbol}</a></td>`;
             html += `<td>${new Date(item.date).toLocaleDateString()}</td>`;
             html += `<td>${item.open}</td>`;
             html += `<td>${item.high}</td>`;

@@ -1,6 +1,11 @@
-#backend/api.py
-from flask import Blueprint, jsonify
+from datetime import date, timedelta
+from venv import logger
+from flask import Flask, Blueprint, jsonify, request
+from backend import database
+from sqlalchemy.orm import Session
 from backend.database import get_all_companies, get_db, get_company_by_ticker
+from backend.models.data_model import FinancialData
+from backend.routes.data_routes import ingest_data
 from backend.services.data_service import (
     fetch_financial_data,
     fetch_historical_fundamentals,
@@ -24,16 +29,20 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 @api_bp.route('/data/dashboard/latest', methods=['GET'])
 def get_latest_data():
     """
-    Retrieves the latest financial data for all companies for the dashboard.
+    Retrieves the latest financial data for all companies for the dashboard.html page.
     """
     db = get_db()
+    print("[DEBUG] /data/dashboard/latest: Entered get_latest_data()") # Debug
     try:
         companies = get_all_companies(db)  # Get all companies
+        print(f"[DEBUG] /data/dashboard/latest: Got companies: {companies}") # Debug
         if not companies:
+            print("[DEBUG] /data/dashboard/latest: No companies found, returning empty list") # Debug
             return jsonify([]), 200  # Return empty list if no companies
 
         all_financial_data = []
         for company in companies:
+            print(f"[DEBUG] /data/dashboard/latest: Processing company: {company.ticker_symbol}") # Debug
             # Fetch the latest financial data for each company
             latest_data = db.execute(
                 """
@@ -55,52 +64,172 @@ def get_latest_data():
                 """,
                 (company.company_id,)
             ).fetchone()
+            print(f"[DEBUG] /data/dashboard/latest: Latest data for {company.ticker_symbol}: {latest_data}")
 
             if latest_data:
                 all_financial_data.append(dict(latest_data))
+        print(f"[DEBUG] /data/dashboard/latest: All financial data: {all_financial_data}")
         return jsonify(all_financial_data), 200
     except Exception as e:
+        print(f"[ERROR] /data/dashboard/latest: An error occurred: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()
-@api_bp.route('/company/<ticker>', methods=['GET'])
-def get_company_info(ticker):
+        print("[DEBUG] /data/dashboard/latest: Database connection closed")
+
+@api_bp.route('/api/company/<ticker>', methods=['GET'])  # Corrected route definition
+def get_company_data(ticker):
+    """
+    For company_details page """
+    print(f"[DEBUG] /api/company/{ticker}: Entered get_company_data()")
+    db: Session = database.SessionLocal()
+    try:
+        company = database.get_company_by_ticker(db, ticker)
+        print(f"[DEBUG] /api/company/{ticker}: Got company: {company}") # Debug
+        if company:
+            #   Fetch financial data for the company
+            financial_data = database.get_financial_data(db, ticker)
+            print(f"[DEBUG] /api/company/{ticker}: Financial Data: {financial_data}")  # Debugging
+            # Fetch trend predictions
+            trend_predictions = {}  # Placeholder,  You need to implement the logic to fetch this.
+            print(f"[DEBUG] /api/company/{ticker}: trend_predictions: {trend_predictions}")
+            # Fetch latest news analysis
+            latest_news_analysis = {} #  Placeholder,  You need to implement the logic to fetch this.
+            print(f"[DEBUG] /api/company/{ticker}: latest_news_analysis: {latest_news_analysis}")
+            # Fetch company news
+            company_news = [] #  Placeholder,  You need to implement the logic to fetch this.
+            print(f"[DEBUG] /api/company/{ticker}: company_news: {company_news}")
+            # Fetch industry news
+            industry_news = [] #  Placeholder,  You need to implement the logic to fetch this.
+            print(f"[DEBUG] /api/company/{ticker}: industry_news: {industry_news}")
+            # Fetch similar companies
+            similar_companies = [] #  Placeholder,  You need to implement the logic to fetch this.
+            print(f"[DEBUG] /api/company/{ticker}: similar_companies: {similar_companies}")
+            response_data = {
+                'company': {
+                    'name': company.company_name,
+                    'ticker': company.ticker_symbol,
+                    'exchange': company.exchange,
+                    'industry': company.industry
+                },
+                'financial_data': financial_data,
+                'trend_predictions': trend_predictions,
+                'latest_news_analysis': latest_news_analysis,
+                'company_news': company_news,
+                'industry_news': industry_news,
+                'similar_companies': similar_companies
+            }
+            print(f"[DEBUG] /api/company/{ticker}: response_data: {response_data}")
+            return jsonify(response_data)
+        else:
+            print(f"[DEBUG] /api/company/{ticker}: Company not found")
+            return jsonify({'error': 'Company not found'}), 404
+    finally:
+        db.close()
+        print(f"[DEBUG] /api/company/{ticker}: Database connection closed")
+
+@api_bp.route('/api/company/<int:company_id>/stock_data')
+def get_stock_data(company_id):
+    """
+    Retrieves stock data for a given company, optionally filtered by time frame. For company_details page
+    """
     db = get_db()
-    company = get_company_by_ticker(db, ticker)
-    if not company:
-        return jsonify({'error': 'Company not found'}), 404
+    print(f"[DEBUG] /api/company/{company_id}/stock_data: Entered get_stock_data()")
+    try:
+        timeframe = request.args.get('timeframe', 'all')
+        print(f"[DEBUG] /api/company/{company_id}/stock_data: timeframe: {timeframe}")
 
-    # Fetch historical financial data (e.g., for the last 5 years)
-    financial_data = fetch_financial_data(ticker, period='5y')
+        if timeframe == '1w':
+            view_name = 'weekly_financial_data'
+            date_column = 'week'
+        elif timeframe == '1m':
+            view_name = 'monthly_financial_data'
+            date_column = 'month'
+        elif timeframe == '1y':
+            view_name = 'yearly_financial_data'
+            date_column = 'year'
+        elif timeframe == 'all':
+            # Fetch all available financial data
+            query = """
+                SELECT 
+                    DATE_FORMAT(created_at, '%Y-%m-%d') AS date,
+                    close,
+                    volume
+                FROM financial_data
+                WHERE company_id = :company_id
+                ORDER BY date ASC
+            """
+            stock_data = db.execute(query, {'company_id': company_id}).fetchall()
+            stock_data = [dict(row) for row in stock_data]
+            print(f"[DEBUG] /api/company/{company_id}/stock_data: stock_data (all): {stock_data}") # Debug
+            return jsonify({'stock_data': stock_data}), 200
+        else:
+            print(f"[DEBUG] /api/company/{company_id}/stock_data: Invalid timeframe") # Debug
+            return jsonify({'error': 'Invalid timeframe'}), 400
 
-    # Predict financial trends
-    trend_predictions = predict_financial_trends(financial_data)
+        # Use the appropriate view based on the timeframe
+        query = f"""
+            SELECT 
+                {date_column} as date,
+                avg_close AS close,
+                total_volume AS volume
+            FROM {view_name}
+            WHERE company_id = :company_id
+            ORDER BY {date_column} ASC
+        """
+        stock_data = db.execute(query, {'company_id': company_id}).fetchall()
+        stock_data = [dict(row) for row in stock_data]
+        print(f"[DEBUG] /api/company/{company_id}/stock_data: stock_data: {stock_data}")
+        return jsonify({'stock_data': stock_data}), 200
 
-    # Fetch latest news (you might need to adjust parameters)
-    news_articles = fetch_latest_news(ticker, company.industry, company.exchange)
+    except Exception as e:
+        print(f"[ERROR] /api/company/{company_id}/stock_data: An error occurred: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+        print(f"[DEBUG] /api/company/{company_id}/stock_data: Database connection closed")
 
-    # Analyze news sentiment (using a placeholder LLM for now)
-    llm_model = os.environ.get('LLM_MODEL', 'default-llm') # Configure your LLM model
-    latest_news_analysis = analyze_news_sentiment(news_articles[:3], llm_model) # Analyze a few latest articles
+@api_bp.route('/api/company/<int:company_id>/financial_data')
+def get_financial_data(company_id):
+    """
+    Retrieves the latest financial data for a given company. For copmany_details page
+    """
+    db = get_db()
+    print(f"[DEBUG] /api/company/{company_id}/financial_data: Entered get_financial_data()")
+    try:
+        # Use the latest_company_financial_data view
+        latest_financial_data = db.execute(
+            """
+            SELECT 
+                latest_date as date,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                roi,
+                eps,
+                pe_ratio,
+                revenue,
+                debt_to_equity,
+                cash_flow
+            FROM latest_company_financial_data 
+            WHERE company_id = :company_id
+            """,
+            {'company_id': company_id}
+        ).fetchone()
+        print(f"[DEBUG] /api/company/{company_id}/financial_data: latest_financial_data: {latest_financial_data}") # Debug
 
-    # Get top news (you might need to refine this based on LLM integration)
-    top_news = [article['title'] for article in news_articles[:5]] # Example: Top 5 titles
+        if latest_financial_data:
+            print(f"[DEBUG] /api/company/{company_id}/financial_data:  financial data found")
+            return jsonify({'financial_data': dict(latest_financial_data)}), 200  # Returns a dict
+        else:
+            print(f"[DEBUG] /api/company/{company_id}/financial_data: no financial data found")
+            return jsonify({'financial_data': []}), 200
 
-    # Get similar companies
-    similar_companies = get_similar_companies(company.industry)
-
-    company_info = {
-        'company': {
-            'ticker': company.ticker_symbol,
-            'name': company.company_name,
-            'exchange': company.exchange,
-            'industry': company.industry
-        },
-        'financial_data': financial_data,
-        'trend_predictions': trend_predictions,
-        'latest_news_analysis': latest_news_analysis,
-        'top_news': top_news,
-        'similar_companies': similar_companies
-    }
-
-    return jsonify(company_info)
+    except Exception as e:
+        print(f"[ERROR] /api/company/{company_id}/financial_data: An error occurred: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+        print(f"[DEBUG]  /api/company/{company_id}/financial_data: Database connection closed")

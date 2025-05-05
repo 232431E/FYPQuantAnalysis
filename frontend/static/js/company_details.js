@@ -1,108 +1,132 @@
-// frontend/static/js/company_details.js
+function fetchCompanyDetails(ticker) {
+    $.ajax({
+        url: `/api/company/${ticker}`,
+        method: 'GET',
+        success: function (data) {
+            if (data.company) {
+                const company = data.company;
+                companyId = company.id; // Store the company ID
+                $('#companyName').text(company.name + ' (' + company.ticker + ')');
+                $('#companyExchange').text(company.exchange);
+                $('#companyIndustry').text(company.industry);
 
-async function loadCompanyInfo() {
-    const ticker = window.location.pathname.split('/').pop(); // Get ticker from the URL (e.g., /company/AAPL)
-    if (ticker) {
-        try {
-            const response = await fetch(`/api/company/${ticker}`);
-            if (response.ok) {
-                const data = await response.json();
-                document.getElementById('companyName').textContent = `${data.company.name} (${data.company.ticker})`;
-                document.getElementById('companyExchange').textContent = data.company.exchange;
-                document.getElementById('companyIndustry').textContent = data.company.industry;
-
-                // Update Key Financial Data
-                if (data.financial_data && data.financial_data.length > 0) {
-                    const latest = data.financial_data[data.financial_data.length - 1];
-                    document.getElementById('revenue').textContent = latest.revenue ? latest.revenue.toFixed(2) : 'N/A';
-                    document.getElementById('eps').textContent = latest.eps ? latest.eps.toFixed(2) : 'N/A';
-                    // Update more financial metrics as needed
-                }
-
-                // Update Trend Predictions
-                if (data.trend_predictions) {
-                    document.getElementById('revenueTrend').textContent = data.trend_predictions.revenue_growth || 'N/A';
-                    document.getElementById('epsTrend').textContent = data.trend_predictions.profit_margin || 'N/A'; // Adjust key based on your prediction output
-                }
-
-                // Update News Analysis
-                if (data.latest_news_analysis) {
-                    document.getElementById('newsBrief').textContent = data.latest_news_analysis.brief || 'Loading...';
-                    const sentimentSpan = document.getElementById('newsSentiment');
-                    sentimentSpan.textContent = data.latest_news_analysis.sentiment || 'N/A';
-                    sentimentSpan.className = `sentiment-${(data.latest_news_analysis.sentiment || '').toLowerCase()}`;
-                }
-
-                // Update Top News
-                const topNewsList = document.getElementById('topNewsList');
-                topNewsList.innerHTML = '';
-
-                if (data.company_news && data.company_news.length > 0) {
-                    topNewsList.append('<li class="font-weight-bold">Company News:</li>');
-                    data.company_news.forEach(news => {
-                        const li = document.createElement('li');
-                        li.className = 'news-item';
-                        const link = document.createElement('a');
-                        link.href = news.url || '#'; // Add a default if URL is missing
-                        link.textContent = news.title || 'No Title'; // Add a default if title is missing
-                        link.target = '_blank';
-                        const dateSpan = document.createElement('span');
-                        dateSpan.textContent = news.publishedAt ? ` - ${new Date(news.publishedAt).toLocaleDateString()}` : '';
-                        li.appendChild(link);
-                        li.appendChild(dateSpan);
-                        topNewsList.appendChild(li);
-                    });
-                } else {
-                    topNewsList.append('<li>No recent company news found.</li>');
-                }
-
-                if (data.industry_news && data.industry_news.length > 0) {
-                    topNewsList.append('<li class="mt-3 font-weight-bold">Industry News:</li>');
-                    data.industry_news.forEach(news => {
-                        const li = document.createElement('li');
-                        li.className = 'news-item';
-                        const link = document.createElement('a');
-                        link.href = news.url || '#';
-                        link.textContent = news.title || 'No Title';
-                        link.target = '_blank';
-                        const dateSpan = document.createElement('span');
-                        dateSpan.textContent = news.publishedAt ? ` - ${new Date(news.publishedAt).toLocaleDateString()}` : '';
-                        li.appendChild(link);
-                        li.appendChild(dateSpan);
-                        topNewsList.appendChild(li);
-                    });
-                } else {
-                    topNewsList.append('<li>No recent industry news found.</li>');
-                }
-
-                // Update Similar Companies
-                const similarCompaniesDiv = document.getElementById('similarCompaniesList');
-                similarCompaniesDiv.innerHTML = '';
-                if (data.similar_companies && data.similar_companies.length > 0) {
-                    data.similar_companies.forEach(company => {
-                        const link = document.createElement('a');
-                        link.href = `/company/${company}`; // Assuming you want to link to their page
-                        link.className = 'similar-company-link';
-                        link.textContent = company;
-                        similarCompaniesDiv.appendChild(link);
-                    });
-                } else {
-                    similarCompaniesDiv.innerHTML = 'No similar companies found.';
-                }
-
-                // TODO: Implement graph rendering using a charting library with data.financial_data
-                console.log("Financial Data for Graphs:", data.financial_data);
+                // Fetch initial graph data (e.g., weekly)
+                fetchGraphData(companyId, 'weekly');
+                displayLatestFinancialData(data.financial_data && data.financial_data[0]);
 
             } else {
-                const errorData = await response.json();
-                document.querySelector('.content').innerHTML = `<div class="alert alert-danger" role="alert">Error loading company data: ${errorData.error || response.statusText}</div>`;
+                $('#companyName').text('Company Not Found');
+                $('#graphsAndFinancials').hide();
             }
-        } catch (error) {
-            document.querySelector('.content').innerHTML = `<div class="alert alert-danger" role="alert">An unexpected error occurred: ${error}</div>`;
+        },
+        error: function (error) {
+            console.error('Error fetching company details:', error);
+            $('#companyName').text('Error Loading Company Details');
+            $('#graphsAndFinancials').hide();
         }
-    } else {
-        document.querySelector('.content').innerHTML = `<div class="alert alert-warning" role="alert">No company ticker provided in the URL.</div>`;
-    }
+    });
 }
 
-window.onload = loadCompanyInfo;
+$(document).ready(function () {
+    console.log("jQuery is ready!");
+    console.log("typeof window.$:", typeof window.$);
+    console.log("typeof window.jQuery:", typeof window.jQuery);
+    console.log("window.$.ajax:", window.$.ajax);
+    console.log("window.jQuery.ajax:", window.jQuery.ajax);
+    const companyTicker = getParameterByName('ticker');
+    let companyId;
+    console.log(companyTicker);
+    if (companyTicker) {
+        fetchCompanyDetails(companyTicker); // Moved inside $(document).ready()
+    } else {
+        $('#companyName').text('Company Not Found');
+    }
+
+});
+
+function getParameterByName(name, url = window.location.href) {
+    name = name.replace(/[\[\]]/g, '\\$&');
+    var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, ' '));
+}
+
+
+$('#timeframeSelect').change(function () {
+    const selectedTimeframe = $(this).val();
+    if (companyId) {
+        fetchGraphData(companyId, selectedTimeframe);
+    }
+});
+
+let stockChart;
+let volumeChart;
+
+function fetchGraphData(companyId, timeframe) {
+    $.ajax({
+        url: `/api/graph/company/${companyId}/${timeframe}`,
+        method: 'GET',
+        success: function (data) {
+            renderCharts(data);
+        },
+        error: function (error) {
+            console.error('Error fetching graph data:', error);
+            // Optionally display an error message in the UI
+        }
+    });
+}
+
+function renderCharts(data) {
+    const labels = data.map(item => item.date);
+    const closePrices = data.map(item => item.close);
+    const volumes = data.map(item => item.volume);
+
+    if (stockChart) {
+        stockChart.destroy();
+    }
+    const stockCtx = document.getElementById('stockChart').getContext('2d');
+    stockChart = new Chart(stockCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Close Price',
+                data: closePrices,
+                borderColor: 'blue',
+                fill: false
+            }]
+        },
+        options: {}
+    });
+
+    if (volumeChart) {
+        volumeChart.destroy();
+    }
+    const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+    volumeChart = new Chart(volumeCtx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Volume',
+                data: volumes,
+                backgroundColor: 'green'
+            }]
+        },
+        options: {}
+    });
+}
+function displayLatestFinancialData(financialData) {
+    const financialDataDiv = $('#financialData');
+    financialDataDiv.empty();
+    if (financialData) {
+        financialDataDiv.append(`<p><strong>Date:</strong> ${financialData.date}</p>`);
+        financialDataDiv.append(`<p><strong>Open:</strong> ${financialData.open}</p>`);
+        financialDataDiv.append(`<p><strong>Close:</strong> ${financialData.close}</p>`);
+        // Add other relevant financial data points
+    } else {
+        financialDataDiv.append('<p>No recent financial data available.</p>');
+    }
+}

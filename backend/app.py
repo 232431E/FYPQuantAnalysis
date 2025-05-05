@@ -45,7 +45,7 @@ def create_app():
     from backend.routes.llm_routes import llm_routes_bp
     from backend.routes.feedback_routes import feedback_routes_bp
     from backend.routes.backtesting_routes import backtesting_routes_bp
-    from backend.routes.visualization_routes import visualisation_routes_bp
+    from backend.routes.graph_routes import graph_routes_bp
     from backend.routes.download_routes import download_routes_bp
     from backend.routes.alert_routes import alert_routes_bp
 
@@ -56,7 +56,7 @@ def create_app():
     app.register_blueprint(llm_routes_bp)
     app.register_blueprint(feedback_routes_bp)
     app.register_blueprint(backtesting_routes_bp)
-    app.register_blueprint(visualisation_routes_bp)
+    app.register_blueprint(graph_routes_bp)
     app.register_blueprint(download_routes_bp)
     app.register_blueprint(alert_routes_bp)
 
@@ -90,6 +90,18 @@ print("Scheduler started for daily news updates at 6:00AM SGT on weekdays.")
 @app.route('/')
 def index():
     return redirect('/user/dashboard')
+
+@app.route('/company_details.html')
+def company_details():
+        return render_template('user/company_details.html')
+
+@app.route('/company/<ticker>')  # Change route to /company/<ticker>
+def company_detail_page(ticker):
+    """
+    This route handles the initial loading of the company_details.html page.
+    It receives the ticker from the URL.
+    """
+    return render_template('company_details.html', ticker=ticker) # Pass the ticker to the template
 
 @app.route('/api/company/<ticker>/news', methods=['GET'])
 def get_company_news(ticker):
