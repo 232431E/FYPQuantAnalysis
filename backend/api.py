@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 from venv import logger
 from flask import Flask, Blueprint, jsonify, request
+from sqlalchemy import desc, text
 from backend import database
 from sqlalchemy.orm import Session
 from backend.database import get_all_companies, get_db, get_company_by_ticker, get_session_local
@@ -200,35 +201,32 @@ def get_financial_data(company_id):
     db = get_db()
     print(f"[DEBUG] /api/company/{company_id}/financial_data: Entered get_financial_data()")
     try:
-        # Use the latest_company_financial_data view
-        latest_financial_data = db.execute(
-            """
-            SELECT 
-                latest_date as date,
-                open,
-                high,
-                low,
-                close,
-                volume,
-                roi,
-                eps,
-                pe_ratio,
-                revenue,
-                debt_to_equity,
-                cash_flow
-            FROM latest_company_financial_data 
-            WHERE company_id = :company_id
-            """,
-            {'company_id': company_id}
-        ).fetchone()
-        print(f"[DEBUG] /api/company/{company_id}/financial_data: latest_financial_data: {latest_financial_data}") # Debug
-
+        latest_financial_data = db.query(FinancialData)\
+            .filter(FinancialData.company_id == company_id)\
+            .order_by(desc(FinancialData.date))\
+            .first()
+        
         if latest_financial_data:
-            print(f"[DEBUG] /api/company/{company_id}/financial_data:  financial data found")
-            return jsonify({'financial_data': dict(latest_financial_data)}), 200  # Returns a dict
+            # Create a dictionary from the SQLAlchemy object to include all attributes
+            financial_data_dict = {
+                'date': latest_financial_data.date.isoformat(),
+                'open': latest_financial_data.open,
+                'high': latest_financial_data.high,
+                'low': latest_financial_data.low,
+                'close': latest_financial_data.close,
+                'volume': latest_financial_data.volume,
+                'roi': latest_financial_data.roi,
+                'eps': latest_financial_data.eps,
+                'pe_ratio': latest_financial_data.pe_ratio,
+                'revenue': latest_financial_data.revenue,
+                'debt_to_equity': latest_financial_data.debt_to_equity,
+                'cash_flow': latest_financial_data.cash_flow,
+                # Add any other attributes of the FinancialData model here
+            }
+            return jsonify({'financial_data': financial_data_dict}), 200
         else:
-            print(f"[DEBUG] /api/company/{company_id}/financial_data: no financial data found")
-            return jsonify({'financial_data': []}), 200
+            print(f"[DEBUG] /api/company/{company_id}/financial_data: No financial data found in DB.")
+            return jsonify({'financial_data': {}}), 200 # Return an empty dictionary
 
     except Exception as e:
         print(f"[ERROR] /api/company/{company_id}/financial_data: An error occurred: {e}")

@@ -16,8 +16,7 @@ function fetchCompanyDetails(ticker) {
                 // Fetch initial graph data (e.g., weekly)
                 console.log("[DEBUG] fetchCompanyDetails - Calling fetchGraphData with companyId:", companyId, "and timeframe: weekly");
                 fetchGraphData(companyId, 'weekly');
-                displayLatestFinancialData(data.financial_data && data.financial_data[0]);
-
+                fetchLatestFinancialData(companyId);
             } else {
                 console.error('Error fetching company details:', error);
             $('#companyName').text('Error Loading Company Details');
@@ -30,6 +29,35 @@ function fetchCompanyDetails(ticker) {
             $('#graphsAndFinancials').hide();
         }
     });
+}
+
+function fetchLatestFinancialData(companyId) {
+    $.ajax({
+        url: `/api/company/${companyId}/financial_data`, // Your existing API endpoint for latest financial data
+        method: 'GET',
+        success: function (data) {
+            console.log("[DEBUG] fetchLatestFinancialData - Data received:", data);
+            displayLatestFinancialData(data.financial_data);
+        },
+        error: function (error) {
+            console.error('Error fetching latest financial data:', error);
+            $('#financialData').html('<p class="text-danger">Error loading financial data.</p>');
+        }
+    });
+}
+
+function displayLatestFinancialData(financialData) {
+    const financialDataDiv = $('#financialData'); // The div where you want to display this data
+    financialDataDiv.empty();
+    if (financialData && Object.keys(financialData).length > 0) {
+        for (const key in financialData) {
+            if (financialData.hasOwnProperty(key)) {
+                financialDataDiv.append(`<p><strong>${key.replace(/_/g, ' ').toUpperCase()}:</strong> ${financialData[key]}</p>`);
+            }
+        }
+    } else {
+        financialDataDiv.append('<p>No recent financial data available.</p>');
+    }
 }
 
 $(document).ready(function () {
@@ -136,12 +164,69 @@ function renderCharts(data, timeframe) { // Ensure timeframe is received here
 function displayLatestFinancialData(financialData) {
     const financialDataDiv = $('#financialData');
     financialDataDiv.empty();
-    if (financialData) {
-        financialDataDiv.append(`<p><strong>Date:</strong> ${financialData.date}</p>`);
-        financialDataDiv.append(`<p><strong>Open:</strong> ${financialData.open}</p>`);
-        financialDataDiv.append(`<p><strong>Close:</strong> ${financialData.close}</p>`);
-        // Add other relevant financial data points
+    if (financialData && Object.keys(financialData).length > 0 && financialData.date) {
+        let tableHTML = '<table class="financial-table">';
+        tableHTML += `<tr><th colspan="2" class="data-date">Data as of: ${new Date(financialData.date).toLocaleDateString()}</th></tr>`;
+
+        const leftColumnData = {
+            "Previous Close": financialData.close,
+            "Open": financialData.open,
+            "Bid": financialData.bid || 'N/A',
+            "Ask": financialData.ask || 'N/A',
+            "Day's Range": `${financialData.low || 'N/A'} - ${financialData.high || 'N/A'}`,
+            "52 Week Range": `${financialData['52_week_low'] || 'N/A'} - ${financialData['52_week_high'] || 'N/A'}`,
+            "Volume": financialData.volume ? financialData.volume.toLocaleString() : 'N/A',
+            "Avg. Volume": financialData.average_volume ? financialData.average_volume.toLocaleString() : 'N/A'
+        };
+
+        const rightColumnData = {
+            "Market Cap (intraday)": financialData.market_cap ? formatMarketCap(financialData.market_cap) : 'N/A',
+            "Beta (5Y Monthly)": financialData.beta || 'N/A',
+            "PE Ratio (TTM)": financialData.pe_ratio || 'N/A',
+            "EPS (TTM)": financialData.eps || 'N/A',
+            "Earnings Date": financialData.earnings_date || 'N/A',
+            "Forward Dividend & Yield": financialData.forward_dividend ? `${financialData.forward_dividend} (${financialData.dividend_yield || 'N/A'})` : 'N/A',
+            "Ex-Dividend Date": financialData.ex_dividend_date || 'N/A',
+            "1y Target Est": financialData.target_mean_price || 'N/A'
+        };
+
+        const leftKeys = Object.keys(leftColumnData);
+        const rightKeys = Object.keys(rightColumnData);
+        const numRows = Math.max(leftKeys.length, rightKeys.length);
+
+        for (let i = 0; i < numRows; i++) {
+            tableHTML += '<tr>';
+            if (i < leftKeys.length) {
+                const key = leftKeys[i];
+                tableHTML += `<td>${key}</td><td>${leftColumnData[key]}</td>`;
+            } else {
+                tableHTML += '<td></td><td></td>'; // Empty cells for alignment
+            }
+
+            if (i < rightKeys.length) {
+                const key = rightKeys[i];
+                tableHTML += `<td>${key}</td><td>${rightColumnData[key]}</td>`;
+            } else {
+                tableHTML += '<td></td><td></td>'; // Empty cells for alignment
+            }
+            tableHTML += '</tr>';
+        }
+
+        tableHTML += '</table>';
+        financialDataDiv.html(tableHTML);
+
     } else {
         financialDataDiv.append('<p>No recent financial data available.</p>');
     }
+}
+
+function formatMarketCap(marketCap) {
+    if (marketCap >= 1e12) {
+        return (marketCap / 1e12).toFixed(3) + 'T';
+    } else if (marketCap >= 1e9) {
+        return (marketCap / 1e9).toFixed(3) + 'B';
+    } else if (marketCap >= 1e6) {
+        return (marketCap / 1e6).toFixed(3) + 'M';
+    }
+    return marketCap.toLocaleString();
 }

@@ -4,7 +4,7 @@ import yfinance as yf
 from sqlalchemy.orm import Session
 from backend import database
 from backend.models import Company, FinancialData, News
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 import pandas as pd
@@ -14,49 +14,93 @@ import pytz
 
 logging.basicConfig(level=logging.INFO)
 
-def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] = None, end: Optional[date] = None) -> Optional[List[Dict[str, Any]]]:
-    """Fetches historical OHLCV data from yfinance, allowing for period or specific date range."""
-    try:
-        if period and not start and not end:
-            data = yf.download(ticker, period=period)
-        elif start and end and not period:
-            data = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'))
-        else:
-            logging.error(f"Invalid parameters for fetch_financial_data. Must provide either 'period' or both 'start' and 'end'.")
-            return None
+def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] = None, end: Optional[date] = None, retries: int = 3, delay: float = 5, db: Optional[Session] = None, company_id: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    """Fetches historical OHLCV data from yfinance with retry and storage logic."""
+    if db is None or company_id is None:
+        logging.error(f"Database session or company_id not provided for {ticker}.")
+        return None
+    for attempt in range(retries):
+        try:
+            if period and not start and not end:
+                data = yf.download(ticker, period=period)
+            elif start and end and not period:
+                data = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'))
+            else:
+                logging.error(f"Invalid parameters for fetch_financial_data. Must provide either 'period' or both 'start' and 'end'.")
+                return None
 
-        if data.empty:
-            logging.warning(f"No OHLCV data received from yfinance for {ticker} (period: {period}, start: {start}, end: {end})")
-            return None
-        financial_data_list = []
-        for index, row in data.iterrows():
+            if data.empty:
+                logging.warning(f"No OHLCV data received from yfinance for {ticker} (period: {period}, start: {start}, end: {end})")
+                return None
+            financial_data_list = []
+            for index, row in data.iterrows():
+                try:
+                    if isinstance(index, pd.Timestamp):
+                        data_date = index.to_pydatetime().date()
+                    else:
+                        data_date = index
+
+                    financial_data_list.append({
+                        "date": data_date,
+                        "open": row['Open'].item(),
+                        "high": row['High'].item(),
+                        "low": row['Low'].item(),
+                        "close": row['Close'].item(),
+                        "volume": row['Volume'].item()
+                    })
+                except (TypeError, ValueError) as e:
+                    logging.error(f"Error converting OHLCV data for {ticker} on {index}: {e}")
+                    continue
+            store_fetched_financial_data(db, company_id, financial_data_list) # Store here
+            return financial_data_list
+        except Exception as e:
+            if "YFRateLimitError" in str(e):
+                    logging.warning(f"Rate limited by yfinance for {ticker}. Retrying in {delay} seconds (attempt {attempt + 1}/{retries}).")
+                    time.sleep(delay)
+                    delay *= 1.5  # Exponential backoff
+            elif "YFPricesMissingError" in str(e):
+                logging.warning(f"No data found for {ticker}: {e}")
+                return []
+            else:
+                logging.error(
+                    f"Error fetching OHLCV data for {ticker} (period: {period}, start: {start}, end: {end}): {e}")
+                return None
+    logging.error(f"Failed to fetch OHLCV data for {ticker} after {retries} attempts.")
+    return None
+
+def store_fetched_financial_data(db: Session, company_id: int, data_list: List[Dict[str, Any]]):
+    """Stores a list of fetched financial data points in the database."""
+    added_count = 0
+    for data_point in data_list:
+        existing_record = (
+            db.query(FinancialData)
+            .filter(
+                FinancialData.company_id == company_id,
+                FinancialData.date == data_point['date'],
+            )
+            .first()
+        )
+        if not existing_record:
             try:
-                if isinstance(index, pd.Timestamp):
-                    data_date = index.to_pydatetime().date()
-                else:
-                    data_date = index
+                financial_data = {
+                    "company_id": company_id,
+                    "date": data_point["date"],
+                    "open": data_point["open"],
+                    "high": data_point["high"],
+                    "low": data_point["low"],
+                    "close": data_point["close"],
+                    "volume": data_point["volume"],
+                    # Add other fields if needed
+                }
+                db.add(FinancialData(**financial_data))
+                added_count += 1
+            except Exception as e:
+                logging.error(f"Error creating financial data for company {company_id} and date {data_point['date']}: {e}")
+                db.rollback() # Rollback immediately on error for a single record
+    if added_count > 0:
+        db.flush() # Flush to batch inserts if needed
+    logging.info(f"Added {added_count} new financial records for company {company_id}.")
 
-                financial_data_list.append({
-                    "date": data_date,
-                    "open": row['Open'].item(),
-                    "high": row['High'].item(),
-                    "low": row['Low'].item(),
-                    "close": row['Close'].item(),
-                    "volume": row['Volume'].item()
-                })
-            except (TypeError, ValueError) as e:
-                logging.error(f"Error converting OHLCV data for {ticker} on {index}: {e}")
-                continue
-        return financial_data_list
-    except Exception as e:
-        if "YFPricesMissingError" in str(e):
-            logging.warning(f"No data found for {ticker}: {e}")
-            return []
-        else:
-            logging.error(
-                f"Error fetching OHLCV data for {ticker} (period: {period}, start: {start}, end: {end}): {e}")
-            return None
-    
 def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[date, Dict[str, Any]]]:
     """Fetches historical fundamental data (annual) from yfinance."""
     try:
@@ -138,12 +182,32 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
             return False
 
     if company:
-        ohlcv_data_list = fetch_financial_data(ticker, period=period)  # Fetch OHLCV data with the specified period
+        most_recent_data = db.query(func.max(FinancialData.date)).filter(FinancialData.company_id == company.company_id).scalar()
+        ohlcv_data_to_store = []
+        if not most_recent_data:
+            # No existing data, fetch the full period
+            ohlcv_data_list = fetch_financial_data(ticker, period=period_to_fetch)
+            if ohlcv_data_list:
+                ohlcv_data_to_store = ohlcv_data_list
+        else:
+            # Fetch data from the day after the most recent record up to today
+            start_date = most_recent_data + timedelta(days=1)
+            end_date = datetime.now().date()
+            if start_date <= end_date:
+                logging.info(f"Fetching missing historical data for {ticker} between {start_date} and {end_date}.")
+                ohlcv_data_list = fetch_financial_data(ticker, start=start_date, end=end_date)
+                if ohlcv_data_list:
+                    ohlcv_data_to_store.extend(ohlcv_data_list)
+                else:
+                    logging.warning(f"Could not fetch missing historical data for {ticker} between {start_date} and {end_date}.")
+            else:
+                logging.info(f"Financial data for {ticker} is up to date.")
+
         fundamental_data_map = fetch_historical_fundamentals(ticker, years=5)
 
-        if company and ohlcv_data_list:
+        if company and ohlcv_data_to_store:
             added_count = 0
-            for ohlcv_data in ohlcv_data_list:
+            for ohlcv_data in ohlcv_data_to_store:
                 eps = None
                 revenue = None
                 debt_to_equity = None
@@ -202,9 +266,8 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
                 f"Added {added_count} new financial records for {ticker} (up to 5 years with annual fundamentals)")
             return True
         else:
-            logging.warning(
-                f"No OHLCV data fetched for {ticker} for the last 5 years")
-            return False
+            logging.info(f"No new OHLCV data to store for {ticker}.")
+            return True
     return False
 
 def needs_financial_data_update(db: Session, company_id: int, threshold_hours: int = 24) -> bool:

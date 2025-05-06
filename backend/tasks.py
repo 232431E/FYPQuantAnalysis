@@ -1,3 +1,4 @@
+import random
 from sqlalchemy import func
 from backend.database import get_db, get_all_companies
 from backend.models.data_model import FinancialData, News
@@ -14,124 +15,61 @@ import pytz
 from flask import Flask
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union #Import typing
-
+import time
 logger = logging.getLogger(__name__)
 
 
-def update_all_financial_data(app: Flask):
-    """Checks and updates financial data for all companies, filling gaps if needed."""
-    logger.info("Starting scheduled financial data update check for all companies...")
+def update_financial_data_for_company(db: Session, company):
+    ticker: str = company.ticker_symbol
+    company_id: int = company.company_id
+    logger.info(f"Checking financial data for {ticker}...")
+    most_recent_data: Optional[Union[datetime, date]] = (
+        db.query(func.max(FinancialData.date))
+        .filter(FinancialData.company_id == company_id)
+        .scalar()
+    )
+
+    sgt = pytz.timezone("Asia/Singapore")
+    now_sgt: date = datetime.now(sgt).date()
+
+    if not most_recent_data:
+        logger.info(f"No financial data found for {ticker}. Fetching up to 5 years of data.")
+        fetch_financial_data(ticker, period="5y", db=db, company_id=company_id) # Pass db and company_id
+    else:
+        data_date_sgt: date = most_recent_data.date() if isinstance(most_recent_data, datetime) else most_recent_data
+        days_difference = (now_sgt - data_date_sgt).days
+        if days_difference > 1:
+            logger.info(f"Last financial data for {ticker} is {days_difference} days old. Attempting to fill the gap.")
+            start_date: date = data_date_sgt + timedelta(days=1)
+            end_date: date = now_sgt
+            fetch_financial_data(ticker, start=start_date, end=end_date, db=db, company_id=company_id) # Pass db and company_id
+        elif days_difference <= 1:
+            logger.info(f"Financial data for {ticker} seems up to date.")
+
+def update_all_financial_data(app: Flask, batch_size=10, delay_per_batch=60):
+    """Checks and updates financial data for all companies in batches with delays."""
+    logger.info("Starting scheduled financial data update check for all companies (batched)...")
     with app.app_context():
         db: Session = get_db()
         try:
             companies = get_all_companies(db)
-            for company in companies:
-                ticker: str = company.ticker_symbol
-                company_id: int = company.company_id
-                logger.info(f"Checking financial data for {ticker}...")
-                most_recent_data: Optional[Union[datetime, date]] = (
-                    db.query(func.max(FinancialData.date))
-                    .filter(FinancialData.company_id == company_id)
-                    .scalar()
-                )
+            num_companies = len(companies)
+            for i in range(0, num_companies, batch_size):
+                batch = companies[i : i + batch_size]
+                logger.info(f"Processing batch {i // batch_size + 1}/{ (num_companies + batch_size - 1) // batch_size } of {len(batch)} companies.")
+                for company in batch:
+                    update_financial_data_for_company(db, company)
+                    time.sleep(random.uniform(5, 15)) # Add some jitter within the batch
+                db.commit() # Commit after each batch
+                logger.info(f"Finished batch {i // batch_size + 1}. Waiting for {delay_per_batch} seconds.")
+                time.sleep(delay_per_batch)
 
-                sgt = pytz.timezone("Asia/Singapore")
-                now_sgt: date = datetime.now(sgt).date()
-
-                if not most_recent_data:
-                    logger.info(
-                        f"No financial data found for {ticker}. Fetching up to 5 years of data."
-                    )
-                    store_financial_data(db, ticker, period="5y")
-                else:
-                    data_date_sgt: date
-                    if isinstance(most_recent_data, date):
-                        data_date_sgt = most_recent_data
-                    elif isinstance(most_recent_data, datetime):
-                        data_date_sgt = most_recent_data.date()  # Extract the date part
-                    else:
-                        try:
-                            data_date_sgt = datetime.strptime(
-                                str(most_recent_data), "%Y-%m-%d"
-                            ).date()  # Attempt to convert from string
-                        except ValueError:
-                            logger.error(
-                                f"Unexpected date format for {ticker}: {most_recent_data}.  Fetching 5 years of data."
-                            )
-                            store_financial_data(db, ticker, period="5y")
-                            continue  # Skip to the next company
-
-                    days_difference = (now_sgt - data_date_sgt).days
-                    if days_difference > 1:
-                        logger.info(
-                            f"Last financial data for {ticker} is {days_difference} days old. Attempting to fill the gap."
-                        )
-                        # Fetch data for the missing period. Be mindful of API limits.
-                        start_date: date = data_date_sgt + timedelta(days=1)
-                        end_date: date = now_sgt
-                        historical_data: Optional[List[dict]] = fetch_financial_data(
-                            ticker, start=start_date, end=end_date
-                        )
-                        if historical_data:
-                            added_count: int = 0
-                            for data_point in historical_data:
-                                # Ensure data_point['date'] is a date object
-                                point_date: date
-                                if isinstance(data_point['date'], date):
-                                    point_date = data_point['date']
-                                elif isinstance(data_point['date'], datetime):
-                                    point_date = data_point['date'].date()
-                                else:
-                                    try:
-                                        point_date = datetime.strptime(
-                                            data_point['date'], "%Y-%m-%d"
-                                        ).date()
-                                    except (TypeError, ValueError) as e:
-                                        logger.error(
-                                            f"Invalid date format '{data_point['date']}' in fetched data for {ticker}: {e}"
-                                        )
-                                        continue  # Skip invalid data point
-
-                                existing_record = (
-                                    db.query(FinancialData)
-                                    .filter(
-                                        FinancialData.company_id == company_id,
-                                        FinancialData.date == point_date,
-                                    )
-                                    .first()
-                                )
-                                if not existing_record:
-                                    financial_data = {
-                                        "company_id": company_id,
-                                        "date": point_date,
-                                        "open": data_point["open"],
-                                        "high": data_point["high"],
-                                        "low": data_point["low"],
-                                        "close": data_point["close"],
-                                        "volume": data_point["volume"],
-                                        # Add other fields if you are fetching them historically
-                                    }
-                                    db.add(FinancialData(**financial_data))
-                                    added_count += 1
-                            db.commit()
-                            logger.info(
-                                f"Added {added_count} missing historical data points for {ticker}."
-                            )
-                        else:
-                            logger.warning(
-                                f"Could not fetch missing historical data for {ticker} between {start_date} and {end_date}."
-                        )
-                    elif days_difference <= 1:
-                        logger.info(
-                            f"Financial data for {ticker} seems up to date (last updated {days_difference} days ago)."
-                        )
         except Exception as e:
-            logger.error(f"Error during financial data update: {e}")
+            logger.error(f"Error during batched financial data update: {e}")
             db.rollback()
         finally:
             db.close()
     logger.info("Scheduled financial data update check finished.")
-
 
 
 def daily_news_update(app: Flask):

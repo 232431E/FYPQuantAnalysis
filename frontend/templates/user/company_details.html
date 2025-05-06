@@ -67,17 +67,49 @@
             font-style: italic;
         }
         .financial-table {
-            width: 100%;
+            width: 80%; /* Adjust as needed */
+            margin: 20px auto; /* Center the table horizontally */
             border-collapse: collapse;
-            margin-top: 1rem;
         }
+
         .financial-table th, .financial-table td {
-            border: 1px solid #dee2e6;
-            padding: 0.75rem;
-            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            text-align: left; /* Align text within cells to the left */
         }
+
         .financial-table th {
-            background-color: #f8f9fa;
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        .financial-table .data-date {
+            text-align: center;
+            font-style: italic;
+            color: #777;
+            border-bottom: 2px solid #bbb;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* Style for the two-column layout */
+        .financial-table tr td:nth-child(odd) {
+            font-weight: bold; /* Make the labels bold */
+            width: 40%; /* Adjust width for the label column */
+            text-align: left; /* Ensure labels are left-aligned */
+        }
+
+        .financial-table tr td:nth-child(even) {
+            width: 60%; /* Adjust width for the value column */
+            text-align: left; /* Ensure values are left-aligned */
+        }
+
+        /* Ensure the table itself is centered */
+        #financialData {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align table to the top of the container if other elements are present */
+            width: 100%; /* Make the container take full width */
         }
         .sentiment-positive {
             color: green;
@@ -133,7 +165,6 @@
         <section id="graphsAndFinancials" class="graph-financial-info">
             <h3 class="section-title">Graphs and Key Financial Information</h3>
             <div id="graphSectionContainer">
-                {/* GraphSection Component will be rendered here */}
                 <div class="tabs">
                     <button class="tab-button active" data-timeframe="weekly">Weekly</button>
                     <button class="tab-button" data-timeframe="monthly">Monthly</button>
@@ -152,6 +183,8 @@
                 <div id="max-chart-container" class="chart-container" style="display: none;">
                     <canvas id="maxChart"></canvas>
                 </div>
+            </div>
+            <div id="financialData">
             </div>
         </section>
 

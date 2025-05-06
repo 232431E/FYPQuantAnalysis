@@ -1,3 +1,4 @@
+//not needed anymore will need to delete this page soon
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
