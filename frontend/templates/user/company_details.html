@@ -134,6 +134,24 @@
             <h3 class="section-title">Graphs and Key Financial Information</h3>
             <div id="graphSectionContainer">
                 {/* GraphSection Component will be rendered here */}
+                <div class="tabs">
+                    <button class="tab-button active" data-timeframe="weekly">Weekly</button>
+                    <button class="tab-button" data-timeframe="monthly">Monthly</button>
+                    <button class="tab-button" data-timeframe="yearly">Yearly</button>
+                    <button class="tab-button" data-timeframe="max">Max</button>
+                </div>
+                <div id="weekly-chart-container" class="chart-container">
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+                <div id="monthly-chart-container" class="chart-container" style="display: none;">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+                <div id="yearly-chart-container" class="chart-container" style="display: none;">
+                    <canvas id="yearlyChart"></canvas>
+                </div>
+                <div id="max-chart-container" class="chart-container" style="display: none;">
+                    <canvas id="maxChart"></canvas>
+                </div>
             </div>
         </section>
 
@@ -174,4 +192,22 @@
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script  src="../static/js/company_details.js"></script>  
+    <script>
+        $('.tab-button').on('click', function() {
+            const timeframe = $(this).data('timeframe');
+
+            // Deactivate all tabs and hide all containers
+            $('.tab-button').removeClass('active');
+            $('.chart-container').hide();
+
+            // Activate the clicked tab and show its container
+            $(this).addClass('active');
+            $('#' + timeframe + '-chart-container').show();
+
+            // Fetch data for the selected timeframe if companyId is available
+            if (companyId) {
+                fetchGraphData(companyId, timeframe);
+            }
+        });
+    </script>
 </html>

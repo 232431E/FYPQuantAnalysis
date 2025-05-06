@@ -1,9 +1,10 @@
+#backend/api.pi
 from datetime import date, timedelta
 from venv import logger
 from flask import Flask, Blueprint, jsonify, request
 from backend import database
 from sqlalchemy.orm import Session
-from backend.database import get_all_companies, get_db, get_company_by_ticker
+from backend.database import get_all_companies, get_db, get_company_by_ticker, get_session_local
 from backend.models.data_model import FinancialData
 from backend.routes.data_routes import ingest_data
 from backend.services.data_service import (
@@ -77,12 +78,13 @@ def get_latest_data():
         db.close()
         print("[DEBUG] /data/dashboard/latest: Database connection closed")
 
-@api_bp.route('/api/company/<ticker>', methods=['GET'])  # Corrected route definition
+@api_bp.route('/company/<ticker>', methods=['GET'])  # Corrected route definition
 def get_company_data(ticker):
     """
     For company_details page """
     print(f"[DEBUG] /api/company/{ticker}: Entered get_company_data()")
-    db: Session = database.SessionLocal()
+    db_session_factory = database.get_session_local()
+    db: Session = db_session_factory()    
     try:
         company = database.get_company_by_ticker(db, ticker)
         print(f"[DEBUG] /api/company/{ticker}: Got company: {company}") # Debug
@@ -107,6 +109,7 @@ def get_company_data(ticker):
             print(f"[DEBUG] /api/company/{ticker}: similar_companies: {similar_companies}")
             response_data = {
                 'company': {
+                    'id': company.company_id,
                     'name': company.company_name,
                     'ticker': company.ticker_symbol,
                     'exchange': company.exchange,
@@ -128,7 +131,7 @@ def get_company_data(ticker):
         db.close()
         print(f"[DEBUG] /api/company/{ticker}: Database connection closed")
 
-@api_bp.route('/api/company/<int:company_id>/stock_data')
+@api_bp.route('/company/<int:company_id>/stock_data')
 def get_stock_data(company_id):
     """
     Retrieves stock data for a given company, optionally filtered by time frame. For company_details page
@@ -189,7 +192,7 @@ def get_stock_data(company_id):
         db.close()
         print(f"[DEBUG] /api/company/{company_id}/stock_data: Database connection closed")
 
-@api_bp.route('/api/company/<int:company_id>/financial_data')
+@api_bp.route('/company/<int:company_id>/financial_data')
 def get_financial_data(company_id):
     """
     Retrieves the latest financial data for a given company. For copmany_details page

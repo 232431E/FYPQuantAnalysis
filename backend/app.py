@@ -74,7 +74,7 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Singapore'))
 scheduler.add_job(func=daily_news_update, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
 
 # Schedule the financial data update job for 6:00 AM SGT on weekdays (Monday-Friday)
-scheduler.add_job(func=update_all_financial_data, trigger='cron', hour=6, minute=0, day_of_week='mon-fri', args=(app,))
+scheduler.add_job(func=update_all_financial_data, trigger='cron', hour=11, minute=36, day_of_week='mon-fri', args=(app,))
 
 # Start the scheduler (this will run in the background)
 scheduler.start()
