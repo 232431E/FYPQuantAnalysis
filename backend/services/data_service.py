@@ -186,7 +186,7 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
         ohlcv_data_to_store = []
         if not most_recent_data:
             # No existing data, fetch the full period
-            ohlcv_data_list = fetch_financial_data(ticker, period=period_to_fetch)
+            ohlcv_data_list = fetch_financial_data(ticker, period= "5y")
             if ohlcv_data_list:
                 ohlcv_data_to_store = ohlcv_data_list
         else:
@@ -288,18 +288,23 @@ def needs_financial_data_update(db: Session, company_id: int, threshold_hours: i
 
 def fetch_company_news(ticker: str, company_name: str = "", count: int = 5) -> List[Dict[str, Any]]:
     """Fetches the latest news for a specific company using yfinance."""
+    logging.info(f"Fetching company news for {ticker}...")
     try:
         ticker_data = yf.Ticker(ticker)
         news = ticker_data.news
+        logging.info(f"Raw company news data for {ticker}: {news}")
         if news:
             # Limit the number of news items
             latest_news = news[:count]
             formatted_news = []
             for item in latest_news:
+                logging.debug(f"DEBUG: Individual news item: {item}")
+                logging.debug(f"DEBUG: Content of news item: {item.get('content')}")
+                content = item.get('content', {})
                 formatted_news.append({
-                    "title": item.get('title'),
-                    "description": item.get('summary'),
-                    "url": item.get('link'),
+                    "title": content.get('title'),
+                    "description": content.get('summary'),
+                    "url": content.get('canonicalUrl', {}).get('url') or content.get('clickThroughUrl', {}).get('url'),
                     "publishedAt": datetime.fromtimestamp(item.get('publishEpoch')).isoformat() if item.get(
                         'publishEpoch') else datetime.now().isoformat(),
                     "source": {"name": "Yahoo Finance"}
@@ -340,9 +345,10 @@ def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
         }
 
         response = requests.get(news_endpoint, params=params)
+        logging.info(f"Industry news API status code: {response.status_code}") 
         response.raise_for_status()
         data = response.json()
-
+        logging.info(f"Raw industry news API data for {industry}: {data}") 
         if data.get('status') == 'ok' and data.get('articles'):
             articles = data['articles'][:count]  # Ensure we only get the count requested
             logging.info(
@@ -361,6 +367,7 @@ def fetch_latest_news(ticker: str, industry: str, exchange: str, company_name: s
     Fetches the latest news for a company and its industry.
     Now using yfinance for company news. Industry news is still a placeholder.
     """
+    logging.info(f"Fetching latest news for ticker: {ticker}, industry: {industry}")
     try:
         company_news = fetch_company_news(ticker, company_name, count=5)
     except Exception as e:
@@ -379,6 +386,7 @@ def store_news_articles(db: Session, company_id: int, news_articles: List[Dict[s
     """
     Stores news articles in the database.
     """
+    logging.info(f"Storing {len(news_articles)} {news_type} news articles for company ID: {company_id}") 
     news_items_to_add = []
 
     # Check for duplicates before adding
@@ -417,9 +425,11 @@ def store_news_articles(db: Session, company_id: int, news_articles: List[Dict[s
             logging.error(f"Error processing article {article.get('title', 'Unknown')}: {e}")
 
     if news_items_to_add:
+        logging.info(f"Attempting to add {len(news_items_to_add)} new news articles to the database.")
         try:
             db.add_all(news_items_to_add)
             db.commit()
+            logging.info(f"Successfully added {len(news_items_to_add)} new news articles.")
         except Exception as db_error:
             logging.error(f"Database error when adding articles: {db_error}")
             db.rollback()
@@ -430,9 +440,11 @@ def store_news_articles(db: Session, company_id: int, news_articles: List[Dict[s
 
 def get_stored_news(db: Session, company_id: int, limit: int = 20) -> List[News]:
     """Retrieves stored news articles for a given company."""
-    return db.query(News).filter(News.company_id == company_id).order_by(
+    logging.info(f"Getting stored news for company ID: {company_id}, limit: {limit}")
+    stored_news = db.query(News).filter(News.company_id == company_id).order_by(
         News.published_date.desc()).limit(limit).all()
-
+    logging.info(f"Retrieved {len(stored_news)} stored news articles for company ID: {company_id}") # DEBUG
+    return stored_news
 
 def predict_financial_trends(financial_data: Optional[List[Dict[str, Any]]]) -> Dict[str, Optional[str]]:
     """Analyzes historical financial data and predicts future trends (basic implementation)."""

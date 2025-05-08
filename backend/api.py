@@ -99,13 +99,11 @@ def get_company_data(ticker):
             # Fetch latest news analysis
             latest_news_analysis = {} #  Placeholder,  You need to implement the logic to fetch this.
             print(f"[DEBUG] /api/company/{ticker}: latest_news_analysis: {latest_news_analysis}")
-            # Fetch company news
-            company_news = [] #  Placeholder,  You need to implement the logic to fetch this.
+            company_news, industry_news = fetch_latest_news(
+            company.ticker_symbol, company.industry, company.exchange, company.company_name
+            )
             print(f"[DEBUG] /api/company/{ticker}: company_news: {company_news}")
-            # Fetch industry news
-            industry_news = [] #  Placeholder,  You need to implement the logic to fetch this.
-            print(f"[DEBUG] /api/company/{ticker}: industry_news: {industry_news}")
-            # Fetch similar companies
+            print(f"[DEBUG] /api/company/{ticker}: industry_news: {industry_news}")            # Fetch similar companies
             similar_companies = [] #  Placeholder,  You need to implement the logic to fetch this.
             print(f"[DEBUG] /api/company/{ticker}: similar_companies: {similar_companies}")
             response_data = {

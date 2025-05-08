@@ -4,6 +4,7 @@ function fetchCompanyDetails(ticker) {
         url: `/api/company/${ticker}`,
         method: 'GET',
         success: function (data) {
+            console.log("[DEBUG] fetchCompanyDetails - Received data:", data);
             if (data.company) {
                 const company = data.company;
                 console.log("[DEBUG] fetchCompanyDetails - Company data received:", company);
@@ -17,6 +18,7 @@ function fetchCompanyDetails(ticker) {
                 console.log("[DEBUG] fetchCompanyDetails - Calling fetchGraphData with companyId:", companyId, "and timeframe: weekly");
                 fetchGraphData(companyId, 'weekly');
                 fetchLatestFinancialData(companyId);
+                displayTopNews(data.company_news, data.industry_news);
             } else {
                 console.error('Error fetching company details:', error);
             $('#companyName').text('Error Loading Company Details');
@@ -26,6 +28,7 @@ function fetchCompanyDetails(ticker) {
         error: function (error) {
             console.error('Error fetching company details:', error);
             $('#companyName').text('Error Loading Company Details');
+            $('#topNewsSection').text('Error Loading News Section');
             $('#graphsAndFinancials').hide();
         }
     });
@@ -218,6 +221,64 @@ function displayLatestFinancialData(financialData) {
     } else {
         financialDataDiv.append('<p>No recent financial data available.</p>');
     }
+}
+function displayTopNews(companyNews, industryNews) {
+    const topNewsList = $('#topNewsList');
+    topNewsList.empty();
+    console.log("[DEBUG] displayTopNews - companyNews:", companyNews);   // Debug: Log companyNews
+    console.log("[DEBUG] displayTopNews - industryNews:", industryNews);   // Debug: Log industryNews
+
+    let newsHTML = '';
+
+    // Helper function to generate news item HTML
+    function generateNewsItemHTML(news) {
+        return `
+            <div class="col-12 col-md-4 news-item">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h4 class="news-headline card-title">
+                            <a href="${news.url}" target="_blank" class="stretched-link">${news.title}</a>
+                        </h4>
+                        <p class="news-origin card-subtitle mb-2 text-muted">${news.source ? news.source.name : 'Unknown Source'}</p>
+                        <p class="news-summary card-text three-line-clamp">${news.description || 'No summary available.'}</p>
+                        <p class="news-date card-text"><small class="text-muted">${news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : ''}</small></p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Display Company News (Horizontal Scroll)
+    if (companyNews && companyNews.length > 0) {
+        newsHTML += '<div class="row"><div class="col-12"><h4 class="news-category">Company News</h4></div></div>';
+        newsHTML += '<div class="row flex-nowrap overflow-auto">'; // Use flex-nowrap for horizontal scroll
+        companyNews.forEach(news => {
+            newsHTML += generateNewsItemHTML(news);
+        });
+        newsHTML += '</div>';
+    }
+
+    // Display Industry News (Rows of 3)
+    if (industryNews && industryNews.length > 0) {
+        newsHTML += '<div class="row mt-4"><div class="col-12"><h4 class="news-category">Industry News</h4></div></div>';
+        newsHTML += '<div class="row">';
+        for (let i = 0; i < industryNews.length; i++) {
+            newsHTML += generateNewsItemHTML(industryNews[i]);
+            if ((i + 1) % 3 === 0) {
+                newsHTML += '</div><div class="row">';
+            }
+        }
+        if (industryNews.length % 3 !== 0) {
+            newsHTML += '</div>';
+        }
+        newsHTML += '</div>'; // Close the last row.
+    }
+
+    if ((!companyNews || companyNews.length === 0) && (!industryNews || industryNews.length === 0)) {
+        newsHTML = '<div class="col-12">No recent news available.</div>';
+    }
+
+    topNewsList.html(newsHTML); // Use .html() to render the generated HTML
 }
 
 function formatMarketCap(marketCap) {
