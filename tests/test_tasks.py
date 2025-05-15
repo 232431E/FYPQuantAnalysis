@@ -18,7 +18,7 @@ if BACKEND_PATH not in sys.path:
     sys.path.append(BACKEND_PATH)
 
 # Import the necessary modules from backend.app
-from backend.app import create_app
+from backend.app import create_app, db
 from backend.tasks import daily_financial_data_update, daily_news_update  # Import the functions directly
 from backend.database import get_db  # Import get_db
 from backend.models.data_model import Company, FinancialData, News  # Import your models
@@ -27,28 +27,22 @@ from backend.models.data_model import Company, FinancialData, News  # Import you
 class TestDailyFinancialDataUpdate(unittest.TestCase):
     def setUp(self):
         # Setup a test Flask app
-        self.app = create_app()
+        self.app = create_app(testing=True, start_scheduler=False)
         self.app.config['TESTING'] = True
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         self.client = self.app.test_client()
-
-        # Create an in-memory SQLite database for testing
-        self.engine = create_engine('sqlite:///:memory:')
-        self.Base = declarative_base()
-        self.Base.metadata.create_all(self.engine)
-        self.TestingSessionLocal = sessionmaker(bind=self.engine)
-        self.db = SQLAlchemy()
-        self.db.init_app(self.app)
 
         # Create an application context for the tests
         self.app_context = self.app.app_context()
         self.app_context.push()
         with self.app_context:
-            self.db.create_all()
+            db.create_all()
 
     def tearDown(self):
         # Clean up the application context
         self.app_context.pop()
+        with self.app.app_context():
+            db.drop_all() 
 
     @patch('backend.tasks.get_db')  # Mock get_db at the tasks level
     def test_daily_update_weekday_6am(self, mock_get_db):

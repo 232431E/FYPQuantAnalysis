@@ -104,6 +104,10 @@ def get_company_data(ticker):
             )
             print(f"[DEBUG] /api/company/{ticker}: company_news: {company_news}")
             print(f"[DEBUG] /api/company/{ticker}: industry_news: {industry_news}")            # Fetch similar companies
+            # Store the fetched news in the database
+            store_news_articles(db, company.company_id, company_news, news_type="company")
+            store_news_articles(db, company.company_id, industry_news, news_type="industry")
+
             similar_companies = [] #  Placeholder,  You need to implement the logic to fetch this.
             print(f"[DEBUG] /api/company/{ticker}: similar_companies: {similar_companies}")
             response_data = {

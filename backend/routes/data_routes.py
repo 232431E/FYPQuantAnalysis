@@ -36,17 +36,24 @@ def needs_update(db: Session, company_id: int, threshold_hours: int = 24) -> boo
 @data_routes_bp.route('/ingest/<ticker>', methods=['POST'])
 def ingest_data(ticker):
     """Handles the ingestion of financial data for a given ticker."""
-    print(f"Received request to ingest data for ticker: {ticker}")
+    print(f"[DEBUG - ingest_data] Received request to ingest data for ticker: {ticker}")
     db: Session = get_db()
     try:
-        if data_service.store_financial_data(db, ticker):
+        print(f"[DEBUG - ingest_data] Calling data_service.store_financial_data with ticker: {ticker}")        
+        success = data_service.store_financial_data(db, ticker)
+        print(f"[DEBUG - ingest_data] data_service.store_financial_data({'success' if success else 'failed'}) for ticker: {ticker}")
+        if success:
+            print(f"[DEBUG - ingest_data] Successfully ingested data for {ticker}")
             return jsonify({"message": f"Data ingested for {ticker}. Refresh the table.", "status": "success"}), 200
         else:
+            print(f"[DEBUG - ingest_data] Failed to ingest data for {ticker}")
             return jsonify({"error": f"Failed to ingest data for {ticker}"}), 500
     except Exception as e:
+        print(f"[DEBUG - ingest_data] An exception occurred during data ingestion for {ticker}: {e}")        
         db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
+        print(f"[DEBUG - ingest_data] Closing database session for ticker: {ticker}")        
         db.close()
 
 @data_routes_bp.route('/ingest/all', methods=['POST'])

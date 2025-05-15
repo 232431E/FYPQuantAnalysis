@@ -13,18 +13,27 @@ Base = declarative_base()  # Define Base *before* importing models
 
 # Import your models here
 from backend.models import User, Alert, Feedback, PromptVersion, Report, Company, FinancialData, News
+engine = None
+SessionLocal = None
 
-def get_engine():
-    if os.environ.get('TESTING'):
-        return create_engine(TEST_DATABASE_URL)
-    else:
-        return create_engine(SQLALCHEMY_DATABASE_URL)
+def get_engine(app=None):
+    global engine
+    if engine is None:
+        if app and app.config['TESTING']:
+            engine = create_engine(TEST_DATABASE_URL)
+        else:
+            engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    return engine
 
-engine = get_engine()  # Create the engine
-Base.metadata.create_all(bind=engine)  # Create the tables
-
-def get_session_local():
-    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_session_local(app=None):
+    global SessionLocal
+    if SessionLocal is None and app:
+        engine = get_engine(app)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    elif SessionLocal is None:
+        engine = get_engine()
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return SessionLocal
 
 def get_db():
     if 'db' not in g:
@@ -38,6 +47,9 @@ def close_db(e=None):
 
 def init_db(app):  # Keep the init_db function, but only for teardown
     app.teardown_appcontext(close_db)
+    with app.app_context():
+        engine = get_engine(app)
+        Base.metadata.create_all(bind=engine)
 
 # --- CRUD Operations ---
 # Import models here, inside the file, to avoid circular imports.

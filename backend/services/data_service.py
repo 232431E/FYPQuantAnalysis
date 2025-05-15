@@ -53,11 +53,11 @@ def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] 
                     continue
             store_fetched_financial_data(db, company_id, financial_data_list) # Store here
             return financial_data_list
-        except Exception as e:
-            if "YFRateLimitError" in str(e):
-                    logging.warning(f"Rate limited by yfinance for {ticker}. Retrying in {delay} seconds (attempt {attempt + 1}/{retries}).")
-                    time.sleep(delay)
-                    delay *= 1.5  # Exponential backoff
+        except requests.exceptions.RequestException as e:
+            if "Too Many Requests" in str(e):
+                wait_time = delay * (attempt + 1)  # Exponential backoff
+                logging.warning(f"Rate limited by yfinance for {ticker}. Retrying in {wait_time:.2f} seconds (attempt {attempt + 1}/{retries}).")
+                time.sleep(wait_time)
             elif "YFPricesMissingError" in str(e):
                 logging.warning(f"No data found for {ticker}: {e}")
                 return []
@@ -65,6 +65,10 @@ def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] 
                 logging.error(
                     f"Error fetching OHLCV data for {ticker} (period: {period}, start: {start}, end: {end}): {e}")
                 return None
+        except Exception as e:
+            logging.error(
+                f"Error fetching OHLCV data for {ticker} (period: {period}, start: {start}, end: {end}): {e}")
+            return None
     logging.error(f"Failed to fetch OHLCV data for {ticker} after {retries} attempts.")
     return None
 
@@ -105,51 +109,52 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
     """Fetches historical fundamental data (annual) from yfinance."""
     try:
         tk = yf.Ticker(ticker)
-        financials = tk.financials  # Annual income statement
+        income_statement = tk.income_statement # Annual income statement
         balance_sheet = tk.balance_sheet  # Annual balance sheet
         cashflow = tk.cashflow  # Annual cash flow statement
 
-        if financials is None or balance_sheet is None or cashflow is None or financials.empty or balance_sheet.empty or cashflow.empty:
-            logging.warning(
-                f"Could not retrieve all historical fundamental statements for {ticker} or they are empty")
+        if income_statement.empty or balance_sheet.empty or cashflow.empty:
+            logging.warning(f"Could not retrieve all historical fundamental statements for {ticker} or they are empty")
             return None
 
         fundamental_data = {}
-        num_years = min(years, len(financials.columns))
+        num_years = min(years, len(income_statement.columns))
         reporting_date = None  # Initialize reporting_date here
 
-        for col in financials.columns[:num_years]:
+        for i in range(num_years):
             try:
-                reporting_date = col.to_pydatetime().date()
+                col_is = income_statement.columns[i]
+                col_bs = balance_sheet.columns[i]
+                col_cf = cashflow.columns[i]
+
+                # Ensure dates are consistent
+                reporting_date_is = pd.to_datetime(col_is).date()
+                reporting_date_bs = pd.to_datetime(col_bs).date()
+                reporting_date_cf = pd.to_datetime(col_cf).date()
+
+                # Use income statement date for consistency
+                reporting_date = reporting_date_is
                 fundamental_data[reporting_date] = {}
 
-                fundamental_data[reporting_date]['eps'] = financials.loc['BasicEPS', col].item() if 'BasicEPS' in financials.index and col in financials.columns and pd.notna(
-                    financials.loc['BasicEPS', col]) else None
-                fundamental_data[reporting_date]['revenue'] = financials.loc['TotalRevenue', col].item() if 'TotalRevenue' in financials.index and col in financials.columns and pd.notna(
-                    financials.loc['TotalRevenue', col]) else None
+                fundamental_data[reporting_date]['eps'] = income_statement.loc['BasicEPS', col_is] if 'BasicEPS' in income_statement.index and pd.notna(income_statement.loc['BasicEPS', col_is]) else None
+                fundamental_data[reporting_date]['revenue'] = income_statement.loc['TotalRevenue', col_is] if 'TotalRevenue' in income_statement.index and pd.notna(income_statement.loc['TotalRevenue', col_is]) else None
 
-                total_debt = balance_sheet.loc['TotalDebt', col].item() if 'TotalDebt' in balance_sheet.index and col in balance_sheet.columns and pd.notna(
-                    balance_sheet.loc['TotalDebt', col]) else None
-                stockholders_equity = balance_sheet.loc['StockholdersEquity', col].item() if 'StockholdersEquity' in balance_sheet.index and col in balance_sheet.columns and pd.notna(
-                    balance_sheet.loc['StockholdersEquity', col]) else None
+                total_debt = balance_sheet.loc['TotalDebt', col_bs] if 'TotalDebt' in balance_sheet.index and pd.notna(balance_sheet.loc['TotalDebt', col_bs]) else None
+                stockholders_equity = balance_sheet.loc['StockholdersEquity', col_bs] if 'StockholdersEquity' in balance_sheet.index and pd.notna(balance_sheet.loc['StockholdersEquity', col_bs]) else None
                 fundamental_data[reporting_date]['total_debt'] = total_debt
                 fundamental_data[reporting_date]['stockholders_equity'] = stockholders_equity
-                if stockholders_equity != 0 and total_debt is not None and stockholders_equity is not None:
-                    fundamental_data[reporting_date]['debt_to_equity'] = total_debt / stockholders_equity
-                else:
-                    fundamental_data[reporting_date]['debt_to_equity'] = None
+                fundamental_data[reporting_date]['debt_to_equity'] = total_debt / stockholders_equity if stockholders_equity and total_debt and stockholders_equity != 0 else None
 
-                fundamental_data[reporting_date]['cash_flow'] = cashflow.loc['OperatingCashFlow', col].item() if 'OperatingCashFlow' in cashflow.index and col in cashflow.columns and pd.notna(
-                    cashflow.loc['OperatingCashFlow', col]) else None
-                fundamental_data[reporting_date]['roi'] = financials.loc['ROI', col].item() if 'ROI' in financials.index and col in financials.columns and pd.notna(
-                    financials.loc['ROI', col]) else None
+                fundamental_data[reporting_date]['cash_flow'] = cashflow.loc['OperatingCashFlow', col_cf] if 'OperatingCashFlow' in cashflow.index and pd.notna(cashflow.loc['OperatingCashFlow', col_cf]) else None
+                net_income = income_statement.loc['NetIncome', col_is] if 'NetIncome' in income_statement.index and pd.notna(income_statement.loc['NetIncome', col_is]) else None
+                fundamental_data[reporting_date]['roi'] = net_income / stockholders_equity if net_income and stockholders_equity and stockholders_equity != 0 else None
 
             except KeyError as e:
                 logging.warning(
                     f"Missing key in fundamental data for {ticker} on {reporting_date}: {e}")
             except AttributeError as e:
                 logging.error(
-                    f"Error processing fundamental data for {ticker} on {reporting_date}: {e}, type of col: {type(col)}")
+                    f"Error processing fundamental data for {ticker} on {reporting_date}: {e}")
             except Exception as e:
                 logging.error(
                     f"Unexpected error processing fundamental data for {ticker} on {reporting_date}: {e}")
@@ -161,6 +166,7 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
 
 def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
     """Stores historical OHLCV and annual fundamental data for a given ticker, linking them by date."""
+    logging.debug(f"Storing financial data for ticker: {ticker}")
     company = database.get_company_by_ticker(db, ticker)
     if not company:
         company_info = yf.Ticker(ticker).info
@@ -186,7 +192,7 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
         ohlcv_data_to_store = []
         if not most_recent_data:
             # No existing data, fetch the full period
-            ohlcv_data_list = fetch_financial_data(ticker, period= "5y")
+            ohlcv_data_list = fetch_financial_data(ticker, period= "3y")
             if ohlcv_data_list:
                 ohlcv_data_to_store = ohlcv_data_list
         else:
@@ -231,6 +237,7 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
                         revenue = relevant_fund_values.get("revenue")
                         debt_to_equity = relevant_fund_values.get("debt_to_equity")
                         cash_flow = relevant_fund_values.get("cash_flow")
+                        roi = relevant_fund_values.get("roi")
                         # P/E ratio calculation
                         if eps is not None and eps != 0 and ohlcv_data["close"] is not None:
                             pe_ratio = ohlcv_data["close"] / eps
@@ -248,7 +255,7 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
                     "revenue": revenue,
                     "debt_to_equity": debt_to_equity,
                     "cash_flow": cash_flow,
-                    "roi": None,  # Needs more complex calculation
+                    "roi": roi,  # Needs more complex calculation
                 }
 
                 existing_data = database.check_existing_financial_data(
@@ -320,48 +327,51 @@ def fetch_company_news(ticker: str, company_name: str = "", count: int = 5) -> L
         return []
 
 def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
-    """Fetches the latest news related to the industry."""
-    news_api_key = os.environ.get('NEWS_API_KEY')
-    news_endpoint = 'https://newsapi.org/v2/everything'
-
-    if not news_api_key:
-        logging.warning(
-            "NEWS_API_KEY environment variable not set. Using placeholder industry news.")
-        return [{"title": f"Placeholder Industry News for {industry}",
-                 "description": f"This is a placeholder news article about the {industry} industry.",
-                 "url": "#",
-                 "publishedAt": datetime.now().isoformat(),
-                 "source": {"name": "Placeholder News"}}] * count
-
+    """Fetches the latest news related to the industry using The Guardian API."""
+    guardian_api_key = "ce66226f-693d-42a5-9023-3b003666df2a"  # Your API key
+    guardian_endpoint = 'https://content.guardianapis.com/search'
+    if not guardian_api_key:
+        logging.warning("The Guardian API key is missing.")
+        return []
     try:
-        # Query for industry news
-        query = f'"{industry}" AND (industry OR sector OR market)'
+        query = f'"{industry}"'  # Search for the industry
         params = {
             'q': query,
-            'apiKey': news_api_key,
-            'sortBy': 'publishedAt',
-            'language': 'en',
-            'pageSize': count
+            'api-key': guardian_api_key,
+            'format': 'json',
+            'show-fields': 'headline,trailText,webUrl,webPublicationDate',
+            'order-by': 'newest',
+            'page-size': count
         }
-
-        response = requests.get(news_endpoint, params=params)
-        logging.info(f"Industry news API status code: {response.status_code}") 
+        logging.debug(f"DEBUG: Fetching industry news for '{industry}' using The Guardian API with params: {params}")
+        response = requests.get(guardian_endpoint, params=params)
+        logging.debug(f"DEBUG: The Guardian API response status code: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        logging.info(f"Raw industry news API data for {industry}: {data}") 
-        if data.get('status') == 'ok' and data.get('articles'):
-            articles = data['articles'][:count]  # Ensure we only get the count requested
-            logging.info(
-                f"Successfully fetched {len(articles)} industry news articles for {industry}")
-            return articles
-        else:
-            logging.warning(
-                f"Could not fetch industry news for {industry}. Response: {data}")
-            return []
+        logging.info(f"The Guardian API response for industry '{industry}': {data}")
+        results = data.get('response', {}).get('results', [])
+        logging.debug(f"DEBUG: Number of results from The Guardian API: {len(results)}")
+        industry_news = []
+        for article in results:
+            logging.debug(f"DEBUG: Individual Guardian article: {article}")
+            fields = article.get('fields', {})
+            logging.debug(f"DEBUG: Fields for the article: {fields}")
+            industry_news.append({
+                "title": fields.get('headline'),
+                "description": fields.get('trailText'),
+                "url": article.get('webUrl'),
+                "publishedAt": fields.get('webPublicationDate'),
+                "source": {"name": "The Guardian"}
+            })
+        logging.info(f"Successfully fetched {len(industry_news)} industry news articles for '{industry}' from The Guardian.")
+        return industry_news
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching industry news for {industry}: {e}")
+        logging.error(f"Error fetching industry news from The Guardian for '{industry}': {e}")
         return []
-
+    except KeyError as e:
+        logging.error(f"Error parsing The Guardian API response for '{industry}': Missing key {e}")
+        return []
+    
 def fetch_latest_news(ticker: str, industry: str, exchange: str, company_name: str = "") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Fetches the latest news for a company and its industry.
