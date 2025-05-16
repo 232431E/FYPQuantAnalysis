@@ -7,6 +7,7 @@ from backend.services.data_service import (
     store_financial_data,
     fetch_latest_news,
     store_news_articles,
+    fetch_historical_fundamentals,
     needs_financial_data_update,  # Unused, so I'll leave it.  Consider removing if truly unused.
 )
 import logging
@@ -35,6 +36,11 @@ def update_financial_data_for_company(db: Session, company):
     if not most_recent_data:
         logger.info(f"No financial data found for {ticker}. Fetching up to 5 years of data.")
         fetch_financial_data(ticker, period="5y", db=db, company_id=company_id) # Pass db and company_id
+        # Fetch and store historical fundamentals when no data exists
+        fundamental_data = fetch_historical_fundamentals(ticker, years=5)
+        if fundamental_data:
+            from backend.services.data_service import _store_historical_fundamentals  # Import locally to avoid circular dependency
+            _store_historical_fundamentals(db, company, fundamental_data)
     else:
         data_date_sgt: date = most_recent_data.date() if isinstance(most_recent_data, datetime) else most_recent_data
         days_difference = (now_sgt - data_date_sgt).days
@@ -42,7 +48,12 @@ def update_financial_data_for_company(db: Session, company):
             logger.info(f"Last financial data for {ticker} is {days_difference} days old. Attempting to fill the gap.")
             start_date: date = data_date_sgt + timedelta(days=1)
             end_date: date = now_sgt
-            fetch_financial_data(ticker, start=start_date, end=end_date, db=db, company_id=company_id) # Pass db and company_id
+            fetch_financial_data(ticker, start=start_date, end=end_date, db=db, company_id=company_id)
+        logger.info(f"FORCED: Fetching and storing historical fundamentals for {ticker}.")
+        fundamental_data = fetch_historical_fundamentals(ticker, years=5)
+        if fundamental_data:
+            from backend.services.data_service import _store_historical_fundamentals
+            _store_historical_fundamentals(db, company, fundamental_data)        
         elif days_difference <= 1:
             logger.info(f"Financial data for {ticker} seems up to date.")
 
@@ -70,7 +81,6 @@ def update_all_financial_data(app: Flask, batch_size=10, delay_per_batch=60):
         finally:
             db.close()
     logger.info("Scheduled financial data update check finished.")
-
 
 def daily_news_update(app: Flask):
     """Fetches and stores news articles for all companies."""
@@ -130,8 +140,6 @@ def daily_news_update(app: Flask):
         logger.info("Daily news update finished.")
     else:
         logger.debug(f"Skipping news update. Current time is {now.strftime('%H:%M')} SGT.")
-
-
 
 def daily_financial_data_update(app: Flask):
     """Fetches and stores the latest financial data for all companies at 6AM SGT."""

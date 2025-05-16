@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] = None, end: Optional[date] = None, retries: int = 3, delay: float = 5, db: Optional[Session] = None, company_id: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
     """Fetches historical OHLCV data from yfinance with retry and storage logic."""
+    print(f"[DEBUG - fetch_financial_data] Called for ticker: {ticker}, DB Session: {db}, Company ID: {company_id}") # Add this line
     if db is None or company_id is None:
         logging.error(f"Database session or company_id not provided for {ticker}.")
         return None
@@ -102,67 +103,253 @@ def store_fetched_financial_data(db: Session, company_id: int, data_list: List[D
                 logging.error(f"Error creating financial data for company {company_id} and date {data_point['date']}: {e}")
                 db.rollback() # Rollback immediately on error for a single record
     if added_count > 0:
-        db.flush() # Flush to batch inserts if needed
-    logging.info(f"Added {added_count} new financial records for company {company_id}.")
+        try:
+            db.flush() # Flush to batch inserts if needed
+            db.commit()
+            logging.info(f"Added {added_count} new financial records for company {company_id}.")
+        except Exception as e:
+            logging.error(f"Error committing financial data to the database: {e}")
+            db.rollback()
+    else:
+        logging.info(f"No new financial records to add for company {company_id}.")
 
 def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[date, Dict[str, Any]]]:
-    """Fetches historical fundamental data (annual) from yfinance."""
+    """Fetches historical fundamental data (annual) from yfinance with enhanced key handling."""
+    print(f"[DEBUG]-fetch_historical_fundamentals: >>> ENTERING FUNCTION <<< for {ticker}")
+    print(f"[DEBUG]-fetch_historical_fundamentals: Fetching historical fundamentals for {ticker} for the last {years} years.")
     try:
         tk = yf.Ticker(ticker)
-        income_statement = tk.income_statement # Annual income statement
-        balance_sheet = tk.balance_sheet  # Annual balance sheet
-        cashflow = tk.cashflow  # Annual cash flow statement
+        print(f"[DEBUG]-fetch_historical_fundamentals: Attributes of yf.Ticker('{ticker}'): {dir(tk)}")
+
+        income_statement = tk.income_stmt
+        balance_sheet = tk.balance_sheet
+        cashflow = tk.cashflow
+
+        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Income Statement:\n{income_statement.head().to_string()}")
+        print(f"[DEBUG]-fetch_historical_fundamentals: Income Statement Index:\n{income_statement.index.to_list()}")
+        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Balance Sheet:\n{balance_sheet.head().to_string()}")
+        print(f"[DEBUG]-fetch_historical_fundamentals: Balance Sheet Index:\n{balance_sheet.index.to_list()}")
+        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Cash Flow:\n{cashflow.head().to_string()}")
 
         if income_statement.empty or balance_sheet.empty or cashflow.empty:
-            logging.warning(f"Could not retrieve all historical fundamental statements for {ticker} or they are empty")
-            return None
+            print(f"[DEBUG]-fetch_historical_fundamentals: WARNING: Retrieved fundamental statements are empty for {ticker}.")
+            return {}
 
         fundamental_data = {}
-        num_years = min(years, len(income_statement.columns))
-        reporting_date = None  # Initialize reporting_date here
+        num_years = min(years, len(income_statement.columns) if not income_statement.empty else 0)
 
         for i in range(num_years):
             try:
-                col_is = income_statement.columns[i]
-                col_bs = balance_sheet.columns[i]
-                col_cf = cashflow.columns[i]
+                col_is = income_statement.columns[i] if not income_statement.empty else None
+                col_bs = balance_sheet.columns[i] if not balance_sheet.empty else None
+                col_cf = cashflow.columns[i] if not cashflow.empty else None
 
-                # Ensure dates are consistent
-                reporting_date_is = pd.to_datetime(col_is).date()
-                reporting_date_bs = pd.to_datetime(col_bs).date()
-                reporting_date_cf = pd.to_datetime(col_cf).date()
+                reporting_date = None
+                if col_is is not None:
+                    reporting_date = pd.to_datetime(col_is).date()
 
-                # Use income statement date for consistency
-                reporting_date = reporting_date_is
-                fundamental_data[reporting_date] = {}
+                if reporting_date:
+                    fundamental_data[reporting_date] = {}
 
-                fundamental_data[reporting_date]['eps'] = income_statement.loc['BasicEPS', col_is] if 'BasicEPS' in income_statement.index and pd.notna(income_statement.loc['BasicEPS', col_is]) else None
-                fundamental_data[reporting_date]['revenue'] = income_statement.loc['TotalRevenue', col_is] if 'TotalRevenue' in income_statement.index and pd.notna(income_statement.loc['TotalRevenue', col_is]) else None
+                    def get_value(df, keys, col):
+                        if df is None or df.empty or col is None:
+                            return None
+                        for key in keys:
+                            if key in df.index and col in df.columns and pd.notna(df.loc[key, col]):
+                                return df.loc[key, col]
+                        return None
 
-                total_debt = balance_sheet.loc['TotalDebt', col_bs] if 'TotalDebt' in balance_sheet.index and pd.notna(balance_sheet.loc['TotalDebt', col_bs]) else None
-                stockholders_equity = balance_sheet.loc['StockholdersEquity', col_bs] if 'StockholdersEquity' in balance_sheet.index and pd.notna(balance_sheet.loc['StockholdersEquity', col_bs]) else None
-                fundamental_data[reporting_date]['total_debt'] = total_debt
-                fundamental_data[reporting_date]['stockholders_equity'] = stockholders_equity
-                fundamental_data[reporting_date]['debt_to_equity'] = total_debt / stockholders_equity if stockholders_equity and total_debt and stockholders_equity != 0 else None
+                    eps_keys = ['BasicEPS', 'EPSBasic', 'DilutedEPS', 'EPSDiluted', 'Basic EPS', 'Diluted EPS']
+                    eps = get_value(income_statement, eps_keys, col_is)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: EPS from yfinance = {eps}")
+                    fundamental_data[reporting_date]['eps'] = eps
 
-                fundamental_data[reporting_date]['cash_flow'] = cashflow.loc['OperatingCashFlow', col_cf] if 'OperatingCashFlow' in cashflow.index and pd.notna(cashflow.loc['OperatingCashFlow', col_cf]) else None
-                net_income = income_statement.loc['NetIncome', col_is] if 'NetIncome' in income_statement.index and pd.notna(income_statement.loc['NetIncome', col_is]) else None
-                fundamental_data[reporting_date]['roi'] = net_income / stockholders_equity if net_income and stockholders_equity and stockholders_equity != 0 else None
+                    revenue_keys = ['TotalRevenue', 'Revenue', 'NetSales', 'Total Revenue']
+                    revenue = get_value(income_statement, revenue_keys, col_is)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Revenue from yfinance = {revenue}")
+                    fundamental_data[reporting_date]['revenue'] = revenue
 
-            except KeyError as e:
-                logging.warning(
-                    f"Missing key in fundamental data for {ticker} on {reporting_date}: {e}")
-            except AttributeError as e:
-                logging.error(
-                    f"Error processing fundamental data for {ticker} on {reporting_date}: {e}")
+                    total_debt_keys = ['TotalDebt', 'Total Liabilities', 'Liabilities', 'Long Term Debt And Capital Lease Obligation', 'Long Term Debt', 'Current Debt']
+                    total_debt = get_value(balance_sheet, total_debt_keys, col_bs)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Total Debt from yfinance = {total_debt}")
+                    fundamental_data[reporting_date]['total_debt'] = total_debt
+
+                    stockholders_equity_keys = ["Stockholders' Equity", 'StockholdersEquity', 'Total Stockholders Equity', 'Equity', 'Common Stock Equity']
+                    stockholders_equity = get_value(balance_sheet, stockholders_equity_keys, col_bs)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Stockholders Equity from yfinance = {stockholders_equity}")
+                    fundamental_data[reporting_date]['stockholders_equity'] = stockholders_equity
+
+                    total_debt_val = fundamental_data[reporting_date].get('total_debt')
+                    stockholders_equity_val = fundamental_data[reporting_date].get('stockholders_equity')
+                    debt_to_equity = total_debt_val / stockholders_equity_val if stockholders_equity_val and total_debt_val is not None and stockholders_equity_val != 0 else None
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Debt-to-Equity from yfinance = {debt_to_equity}")
+                    fundamental_data[reporting_date]['debt_to_equity'] = debt_to_equity
+
+                    cash_flow_keys = ['OperatingCashFlow', 'Operating Cash Flow', 'Net Cash from Operations']
+                    cash_flow = get_value(cashflow, cash_flow_keys, col_cf)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Operating Cash Flow from yfinance = {cash_flow}")
+                    fundamental_data[reporting_date]['cash_flow'] = cash_flow
+
+                    net_income_keys = ['Net Income', 'NetIncome']
+                    net_income = get_value(income_statement, net_income_keys, col_is)
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Net Income from yfinance = {net_income}")
+
+                    roi = net_income / stockholders_equity_val if stockholders_equity_val and net_income is not None and stockholders_equity_val != 0 else None
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: ROI from yfinance = {roi}")
+                    fundamental_data[reporting_date]['roi'] = roi
+
+                    # Fetching PE Ratio from fast_info
+                    fast_info = tk.fast_info
+                    pe_ratio = fast_info.get('trailingPE')
+                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: PE Ratio from yfinance = {pe_ratio}")
+                    fundamental_data[reporting_date]['pe_ratio'] = pe_ratio
+
+            except IndexError as e:
+                print(f"[DEBUG]-fetch_historical_fundamentals - INDEX ERROR: {e} while accessing column at index {i}")
+                continue
             except Exception as e:
-                logging.error(
-                    f"Unexpected error processing fundamental data for {ticker} on {reporting_date}: {e}")
+                print(f"[DEBUG]-fetch_historical_fundamentals - PROCESSING ERROR: {e}")
+                continue
 
+        print(f"[DEBUG]-fetch_historical_fundamentals: Returning fundamental data: {fundamental_data}")
         return fundamental_data
     except Exception as e:
-        logging.error(f"Error fetching historical fundamental data for {ticker}: {e}")
-        return None
+        print(f"[DEBUG]-fetch_historical_fundamentals: ERROR fetching historical fundamental data for {ticker}: {e}")
+        return {}     
+def _store_historical_fundamentals(db: Session, company: Company, fundamental_data_map: Dict[date, Dict[str, Any]]):
+    """Internal function to store historical fundamental data with detailed debugging."""
+    print(f"[DEBUG]-store_historical_fundamentals: Internal function: Storing historical fundamentals for {company.ticker_symbol}")
+    updated_fundamentals_count = 0
+    for fund_date, fund_values in fundamental_data_map.items():
+        print(f"[DEBUG]-store_historical_fundamentals: Processing data for year: {fund_date.year}, values: {fund_values}")
+        db_records = db.query(FinancialData).filter(
+            FinancialData.company_id == company.company_id,
+            FinancialData.date == fund_date
+        ).all()
+
+        if not db_records:
+            print(f"[DEBUG]-store_historical_fundamentals: WARNING: No exact OHLCV record found for {company.ticker_symbol} on {fund_date}. Attempting to find a record within +/- 30 days or same month.")
+            # Try to find a record within +/- 30 days
+            start_range = fund_date - timedelta(days=30)
+            end_range = fund_date + timedelta(days=30)
+            nearby_records = db.query(FinancialData).filter(
+                FinancialData.company_id == company.company_id,
+                FinancialData.date >= start_range,
+                FinancialData.date <= end_range
+            ).order_by(func.abs(func.datediff(FinancialData.date, fund_date))).all()
+
+            best_match = None
+            same_month_records = [rec for rec in nearby_records if rec.date.year == fund_date.year and rec.date.month == fund_date.month]
+
+            if same_month_records:
+                best_match = min(same_month_records, key=lambda rec: abs((rec.date - fund_date).days))
+                print(f"[DEBUG]-store_historical_fundamentals: INFO: Found a match within the same month for {company.ticker_symbol} fundamental date {fund_date} on OHLCV date {best_match.date}.")
+            elif nearby_records:
+                best_match = nearby_records[0]
+                print(f"[DEBUG]-store_historical_fundamentals: INFO: Found a nearby match (+/- 30 days) for {company.ticker_symbol} fundamental date {fund_date} on OHLCV date {best_match.date}.")
+
+            if best_match:
+                db_record = best_match
+                if db_record:
+                    print(f"[DEBUG]-store_historical_fundamentals: Attempting to update record with date: {db_record.date} based on fundamental date: {fund_date}")
+                else:
+                    print(f"[DEBUG]-store_historical_fundamentals: WARNING: Could not retrieve database record for best match on {best_match.date}.")
+                    continue
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: WARNING: No nearby OHLCV record found for {company.ticker_symbol} fundamental date {fund_date}.")
+                continue # Skip to the next fundamental data point
+        else:
+            db_record = db_records[0] # If exact match, use the first record (should ideally be only one)
+            print(f"[DEBUG]-store_historical_fundamentals: INFO: Exact match found for fundamental date {fund_date} with OHLCV date {db_record.date}")
+
+        if db_record:
+            print(f"[DEBUG]-store_historical_fundamentals: Examining record with date: {db_record.date} before potential update.")
+            print(f"[DEBUG]-store_historical_fundamentals - Before: EPS={db_record.eps}, Revenue={db_record.revenue}, DebtToEquity={db_record.debt_to_equity}, CashFlow={db_record.cash_flow}, ROI={db_record.roi}, PERatio={db_record.pe_ratio}")
+            updated = False
+
+            yfinance_eps = fund_values.get('eps')
+            if yfinance_eps is not None and db_record.eps != yfinance_eps:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating EPS for {db_record.date} with yfinance value: {yfinance_eps} (was {db_record.eps}).")
+                db_record.eps = yfinance_eps
+                updated = True
+            elif yfinance_eps is not None and db_record.eps is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting EPS for {db_record.date} with yfinance value: {yfinance_eps}.")
+                db_record.eps = yfinance_eps
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: EPS from yfinance is None or matches database value.")
+
+            yfinance_revenue = fund_values.get('revenue')
+            if yfinance_revenue is not None and db_record.revenue != yfinance_revenue:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating Revenue for {db_record.date} with yfinance value: {yfinance_revenue} (was {db_record.revenue}).")
+                db_record.revenue = yfinance_revenue
+                updated = True
+            elif yfinance_revenue is not None and db_record.revenue is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting Revenue for {db_record.date} with yfinance value: {yfinance_revenue}.")
+                db_record.revenue = yfinance_revenue
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: Revenue from yfinance is None or matches database value.")
+
+            yfinance_debt_to_equity = fund_values.get('debt_to_equity')
+            if yfinance_debt_to_equity is not None and db_record.debt_to_equity != yfinance_debt_to_equity:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity} (was {db_record.debt_to_equity}).")
+                db_record.debt_to_equity = yfinance_debt_to_equity
+                updated = True
+            elif yfinance_debt_to_equity is not None and db_record.debt_to_equity is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity}.")
+                db_record.debt_to_equity = yfinance_debt_to_equity
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: DebtToEquity from yfinance is None or matches database value.")
+
+            yfinance_cash_flow = fund_values.get('cash_flow')
+            if yfinance_cash_flow is not None and db_record.cash_flow != yfinance_cash_flow:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow} (was {db_record.cash_flow}).")
+                db_record.cash_flow = yfinance_cash_flow
+                updated = True
+            elif yfinance_cash_flow is not None and db_record.cash_flow is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow}.")
+                db_record.cash_flow = yfinance_cash_flow
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: CashFlow from yfinance is None or matches database value.")
+
+            yfinance_roi = fund_values.get('roi')
+            if yfinance_roi is not None and db_record.roi != yfinance_roi:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating ROI for {db_record.date} with yfinance value: {yfinance_roi} (was {db_record.roi}).")
+                db_record.roi = yfinance_roi
+                updated = True
+            elif yfinance_roi is not None and db_record.roi is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting ROI for {db_record.date} with yfinance value: {yfinance_roi}.")
+                db_record.roi = yfinance_roi
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: ROI from yfinance is None or matches database value.")
+
+            yfinance_pe_ratio = fund_values.get('pe_ratio')
+            if yfinance_pe_ratio is not None and db_record.pe_ratio != yfinance_pe_ratio:
+                print(f"[DEBUG]-store_historical_fundamentals: Updating PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio} (was {db_record.pe_ratio}).")
+                db_record.pe_ratio = yfinance_pe_ratio
+                updated = True
+            elif yfinance_pe_ratio is not None and db_record.pe_ratio is None:
+                print(f"[DEBUG]-store_historical_fundamentals: Setting PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio}.")
+                db_record.pe_ratio = yfinance_pe_ratio
+                updated = True
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: PERatio from yfinance is None or matches database value.")
+
+            if updated:
+                updated_fundamentals_count += 1
+                print(f"[DEBUG]-store_historical_fundamentals: INFO: Updated fundamentals for {company.ticker_symbol} on {db_record.date}.")
+                print(f"[DEBUG]-store_historical_fundamentals - After Update: EPS={db_record.eps}, Revenue={db_record.revenue}, DebtToEquity={db_record.debt_to_equity}, CashFlow={db_record.cash_flow}, ROI={db_record.roi}, PE Ratio: {db_record.pe_ratio}")
+            else:
+                print(f"[DEBUG]-store_historical_fundamentals: No fundamental data updated for {company.ticker_symbol} on {db_record.date}.")
+
+    if updated_fundamentals_count > 0:
+        print(f"[DEBUG]-store_historical_fundamentals: INFO: Updated {updated_fundamentals_count} fundamental data points for {company.ticker_symbol}.")
+    else:
+        print(f"[DEBUG]-store_historical_fundamentals: INFO: No new fundamental data to store for {company.ticker_symbol}.")
 
 def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
     """Stores historical OHLCV and annual fundamental data for a given ticker, linking them by date."""
@@ -192,89 +379,115 @@ def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
         ohlcv_data_to_store = []
         if not most_recent_data:
             # No existing data, fetch the full period
-            ohlcv_data_list = fetch_financial_data(ticker, period= "3y")
+            ohlcv_data_list = fetch_financial_data(ticker, period= "5y", db=db, company_id=company.company_id)
             if ohlcv_data_list:
-                ohlcv_data_to_store = ohlcv_data_list
+                store_fetched_financial_data(db, company.company_id, ohlcv_data_list)
+            else:
+                logging.warning(f"Could not fetch initial historical data for {ticker}.")
+                return False # Or handle the case where no initial data is fetched
         else:
             # Fetch data from the day after the most recent record up to today
             start_date = most_recent_data + timedelta(days=1)
             end_date = datetime.now().date()
             if start_date <= end_date:
                 logging.info(f"Fetching missing historical data for {ticker} between {start_date} and {end_date}.")
-                ohlcv_data_list = fetch_financial_data(ticker, start=start_date, end=end_date)
-                if ohlcv_data_list:
-                    ohlcv_data_to_store.extend(ohlcv_data_list)
-                else:
+                fetched_ohlcv_data = fetch_financial_data(ticker, start=start_date, end=end_date, db=db, company_id=company.company_id)
+                if not fetched_ohlcv_data:
                     logging.warning(f"Could not fetch missing historical data for {ticker} between {start_date} and {end_date}.")
+                    pass
+                else:
+                    pass
             else:
                 logging.info(f"Financial data for {ticker} is up to date.")
 
         fundamental_data_map = fetch_historical_fundamentals(ticker, years=5)
+        logging.debug(f"DEBUG: Fetched fundamental data from yfinance for {ticker}: {fundamental_data_map}")
+        logging.info(f"DEBUG (Check Fundamentals): Length of fundamental_data_map for {ticker}: {len(fundamental_data_map)}") # ADD THIS LINE
 
-        if company and ohlcv_data_to_store:
-            added_count = 0
-            for ohlcv_data in ohlcv_data_to_store:
-                eps = None
-                revenue = None
-                debt_to_equity = None
-                cash_flow = None
-                pe_ratio = None
+        if fundamental_data_map:
+            logging.info(f"DEBUG (Fundamental Reporting Dates for {ticker}): {list(fundamental_data_map.keys())}") # ADD THIS LINE
 
-                # Try to find matching fundamental data based on the year
-                if fundamental_data_map:
-                    ohlcv_year = ohlcv_data['date'].year
-                    relevant_fund_date = None
-                    relevant_fund_values = None
+        if company and fundamental_data_map:
+            updated_fundamentals_count = 0
+            for fund_date, fund_values in fundamental_data_map.items():
+                logging.debug(f"DEBUG: Processing fundamental data for year: {fund_date.year}, fund_date: {fund_date}, values: {fund_values}")
+                logging.debug(f"DEBUG: Fundamental data retrieved for {fund_date}: EPS={fund_values.get('eps')}, Revenue={fund_values.get('revenue')}, DebtToEquity={fund_values.get('debt_to_equity')}, CashFlow={fund_values.get('cash_flow')}, ROI={fund_values.get('roi')}")
+                db_records = db.query(FinancialData).filter(
+                    FinancialData.company_id == company.company_id,
+                    FinancialData.date == fund_date 
+                ).all()
+                logging.debug(f"DEBUG: Found {len(db_records)} database records for company {company.company_id} and year {fund_date.year}.")
 
-                    for fund_date, fund_values in fundamental_data_map.items():
-                        if fund_date.year <= ohlcv_year:
-                            if relevant_fund_date is None or fund_date > relevant_fund_date:
-                                relevant_fund_date = fund_date
-                                relevant_fund_values = fund_values
+                if not db_records:
+                    logging.warning(f"No OHLCV records found for company {company.company_id} in the year {fund_date.year} to update with fundamental data.")
+                    continue # Move to the next fundamental data point
 
-                    if relevant_fund_values:
-                        eps = relevant_fund_values.get("eps")
-                        revenue = relevant_fund_values.get("revenue")
-                        debt_to_equity = relevant_fund_values.get("debt_to_equity")
-                        cash_flow = relevant_fund_values.get("cash_flow")
-                        roi = relevant_fund_values.get("roi")
-                        # P/E ratio calculation
-                        if eps is not None and eps != 0 and ohlcv_data["close"] is not None:
-                            pe_ratio = ohlcv_data["close"] / eps
+                for record in db_records:
+                    logging.debug(f"DEBUG: Attempting to update record with date: {record.date} (database) against fundamental year: {fund_date.year} (yfinance)")
+                    logging.debug(f"DEBUG: Current database record for date {record.date}: EPS={record.eps}, Revenue={record.revenue}, DebtToEquity={record.debt_to_equity}, CashFlow={record.cash_flow}, PE Ratio={record.pe_ratio}, ROI={record.roi}")
+                    updated = False
+                    if record.eps is None and fund_values.get('eps') is not None:
+                        logging.debug(f"DEBUG: Updating NULL EPS for {record.date} with yfinance value: {fund_values.get('eps')}")
+                        record.eps = fund_values['eps']
+                        updated = True
+                    elif fund_values.get('eps') is not None and record.eps != fund_values.get('eps'):
+                        logging.debug(f"DEBUG: EPS in yfinance: {fund_values.get('eps')}, database value: {record.eps}")
 
-                financial_data = {
-                    "company_id": company.company_id,
-                    "date": ohlcv_data['date'],
-                    "open": ohlcv_data['open'],
-                    "high": ohlcv_data['high'],
-                    "low": ohlcv_data['low'],
-                    "close": ohlcv_data['close'],
-                    "volume": ohlcv_data['volume'],
-                    "eps": eps,
-                    "pe_ratio": pe_ratio,  # Include the calculated P/E ratio
-                    "revenue": revenue,
-                    "debt_to_equity": debt_to_equity,
-                    "cash_flow": cash_flow,
-                    "roi": roi,  # Needs more complex calculation
-                }
+                    if record.revenue is None and fund_values.get('revenue') is not None:
+                        logging.debug(f"DEBUG: Updating NULL Revenue for {record.date} with yfinance value: {fund_values.get('revenue')}")
+                        record.revenue = fund_values['revenue']
+                        updated = True
+                    elif fund_values.get('revenue') is not None:
+                        logging.debug(f"DEBUG: Revenue in yfinance: {fund_values.get('revenue')}, database value: {record.revenue}")
 
-                existing_data = database.check_existing_financial_data(
-                    db, company.company_id, financial_data['date'])
-                if not existing_data:
-                    try:
-                        database.create_financial_data(db, financial_data)
-                        added_count += 1
-                    except Exception as e:
-                        logging.error(
-                            f"Error creating financial data for {ticker} and date {financial_data['date']}: {e}")
-                        db.rollback()
-                        return False
-            print(
-                f"Added {added_count} new financial records for {ticker} (up to 5 years with annual fundamentals)")
-            return True
-        else:
-            logging.info(f"No new OHLCV data to store for {ticker}.")
-            return True
+                    if record.debt_to_equity is None and fund_values.get('debt_to_equity') is not None:
+                        logging.debug(f"DEBUG: Updating NULL DebtToEquity for {record.date} with yfinance value: {fund_values.get('debt_to_equity')}")
+                        record.debt_to_equity = fund_values['debt_to_equity']
+                        updated = True
+                    elif fund_values.get('debt_to_equity') is not None:
+                        logging.debug(f"DEBUG: DebtToEquity in yfinance: {fund_values.get('debt_to_equity')}, database value: {record.debt_to_equity}")
+
+                    if record.cash_flow is None and fund_values.get('cash_flow') is not None:
+                        logging.debug(f"DEBUG: Updating NULL CashFlow for {record.date} with yfinance value: {fund_values.get('cash_flow')}")
+                        record.cash_flow = fund_values['cash_flow']
+                        updated = True
+                    elif fund_values.get('cash_flow') is not None:
+                        logging.debug(f"DEBUG: CashFlow in yfinance: {fund_values.get('cash_flow')}, database value: {record.cash_flow}")
+
+                    if record.roi is None and fund_values.get('roi') is not None:
+                        logging.debug(f"DEBUG: Updating NULL ROI for {record.date} with yfinance value: {fund_values.get('roi')}")
+                        record.roi = fund_values['roi']
+                        updated = True
+                    elif fund_values.get('roi') is not None:
+                        logging.debug(f"DEBUG: ROI in yfinance: {fund_values.get('roi')}, database value: {record.roi}")
+
+                    # Calculate and update P/E ratio if EPS and close price are available
+                    if record.pe_ratio is None and record.eps is not None and record.eps != 0 and record.close is not None:
+                        pe_calculated = record.close / record.eps
+                        logging.debug(f"DEBUG: Calculating PE Ratio for {record.date}: Close={record.close}, EPS={record.eps}, PE={pe_calculated}")
+                        record.pe_ratio = pe_calculated
+                        updated = True
+                    elif record.pe_ratio is not None:
+                        logging.debug(f"DEBUG: PE Ratio already present in database: {record.pe_ratio}")
+                    elif record.eps is None or record.eps == 0 or record.close is None:
+                        logging.debug(f"DEBUG: Cannot calculate PE Ratio for {record.date} due to missing close price or non-positive EPS (Close: {record.close}, EPS: {record.eps})")
+
+                    if updated:
+                        updated_fundamentals_count += 1
+                        logging.info(f"DEBUG (Store Fundamentals): Updated fundamentals for {company.ticker_symbol} on {record.date}.")
+                        logging.debug(f"DEBUG (Store Fundamentals - After Update): EPS={record.eps}, Revenue={record.revenue}, DebtToEquity={record.debt_to_equity}, CashFlow={record.cash_flow}, ROI={record.roi}")
+
+            try:
+                db.commit()
+                if updated_fundamentals_count > 0:
+                    logging.info(f"Updated {updated_fundamentals_count} fundamental data points for {ticker}.")
+                else:
+                    logging.info(f"No fundamental data updates needed for {ticker}.")
+            except Exception as e:
+                logging.error(f"Error committing updated fundamental data for {ticker}: {e}")
+                db.rollback()
+                return False
+        return True
     return False
 
 def needs_financial_data_update(db: Session, company_id: int, threshold_hours: int = 24) -> bool:
