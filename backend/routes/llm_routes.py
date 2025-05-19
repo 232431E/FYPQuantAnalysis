@@ -22,30 +22,39 @@ def not_found(error):
 def get_company_news_sentiment(company_id):
     """Retrieves news for a company and analyzes its sentiment using Gemini."""
     db: Session = get_db()
+    print(f"[DEBUG - Backend - Route] Entering get_company_news_sentiment for company_id: {company_id}")
+
     try:
         company = db.get(Company, company_id)
         if not company:
+            print(f"[DEBUG - Backend - Route] Company with ID {company_id} not found in database.")
             return jsonify({"error": "Company not found"}), 404
 
         # Retrieve news articles for the company
         news_articles = db.query(News).filter(News.company_id == company_id).order_by(News.published_date.desc()).limit(10).all() # Adjust limit as needed
         if not news_articles:
-            return jsonify({"sentiment_analysis": {"brief": "No news available for analysis.", "sentiment": "Neutral"}}), 200
-
+            return jsonify({"sentiment_analysis": {
+                "brief_overall_sentiment": "Neutral",
+                "market_outlook": "Insufficient information.",
+                "detailed_explanation": "No news available to analyze political or geopolitical factors."
+            }}), 200
         # Construct the prompt for Gemini
-        news_text = "\n".join([f"Title: {news.title}\nSummary: {news.summary}" for news in news_articles])
-        prompt = f"""Analyze the overall sentiment of the following news articles for {company.company_name} (ticker: {company.ticker_symbol}, industry: {company.industry}):
+        news_text = "\n".join([f"Title: {news.title}\nLink: {news.link}\nSummary: {news.summary}" for news in news_articles])
+        prompt = f"""Analyze the overall sentiment of the following news articles for {company.company_name} (ticker: {company.ticker_symbol}, industry: {company.industry})
+        based on the following recent news, considering potential political and geopolitical factors that might influence the company or its market:
 
+         **Recent News:**
         {news_text}
+        Provide a sentiment analysis with the following structure:
+        - **Brief Overall Sentiment:** (e.g., Positive, Negative, Mixed, Neutral)
+        - **Market Outlook:** Describe the potential near-term market outlook for this company based on the news and considered factors.
+        - **Detailed Explanation:** Explain how you arrived at this sentiment and outlook, explicitly mentioning any political or geopolitical factors that played a role in your analysis.
 
-        Consider the information provided, as well as any potential geopolitical factors and your own general knowledge/research, to determine the overall sentiment towards the company. Provide:
-        1. A brief overall sentiment (e.g., Positive, Negative, Mixed, Neutral).
-        2. A more detailed explanation of the factors contributing to this sentiment, including any relevant geopolitical influences.
+        Return your analysis as a JSON object with the keys: "brief_overall_sentiment", "market_outlook", and "detailed_explanation".
         """
-        logger.debug(f"Prompt for LLM: {prompt}")
-        # Analyze sentiment using Gemini
-        sentiment_result = analyze_news_sentiment_gemini([{"title": news.title, "description": news.summary} for news in news_articles]) # Adapt the structure if needed
-
+        print("[DEBUG - Backend] Constructed LLM Prompt:\n", prompt)
+        sentiment_result = analyze_news_sentiment_gemini(news_articles, prompt=prompt, llm_model='gemini-2.0-flash-lite')
+        print("[DEBUG - Backend] Received sentiment_result from service:\n", sentiment_result)
         return jsonify({"sentiment_analysis": sentiment_result}), 200
     except NotFound:
         raise  # Re-raise NotFound to be handled by Flask's default error handler
@@ -62,13 +71,15 @@ def get_llm_report(company_id):
     Generates an LLM-powered report for a given company, including sentiment analysis of recent news.
     """
     db: Session = get_db()
+    print(f"[DEBUG - Backend - Route] Entering get_llm_report for company_id: {company_id}")
+
     try:
         logger.debug(f"Fetching company with ID: {company_id}")
         company = get_company(db, company_id)
         logger.debug(f"Fetched company: {company}")     
         if not company:
             logger.warning(f"Company with ID {company_id} not found.")
-            abort(NotFound(description="Company not found"))
+            return jsonify({'error': "Company not found"}), 404 # Temporary change
         logger.debug(f"Company name from DB: {company.company_name}, Ticker: {company.ticker_symbol}")
         # Retrieve news articles for the company, ordered by published date
         logger.debug(f"Fetching news for company ID: {company_id}")
@@ -98,7 +109,7 @@ def get_llm_report(company_id):
         # Analyze sentiment of the news articles
         news_for_llm = [{"title": news.title, "description": news.summary} for news in news_articles]
         logger.debug("Calling analyze_news_sentiment_gemini")
-        sentiment_analysis = analyze_news_sentiment_gemini(news_for_llm, llm_model='gemini-pro')
+        sentiment_analysis = analyze_news_sentiment_gemini(news_for_llm, llm_model='gemini-2.0-flash-lite')
         logger.debug("Received sentiment analysis from LLM service.")
 
         # Construct the report

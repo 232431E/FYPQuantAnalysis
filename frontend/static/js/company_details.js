@@ -19,6 +19,9 @@ function fetchCompanyDetails(ticker) {
                 fetchGraphData(companyId, 'weekly');
                 fetchLatestFinancialData(companyId);
                 displayTopNews(data.company_news, data.industry_news);
+                fetchSentimentAnalysis(companyId);
+                updateLLMReport(companyId);
+                console.log("[DEBUG - Frontend] fetchCompanyDetails - Company details, graph, financials, news, sentiment, and report initiated.");
             } else {
                 console.error('Error fetching company details:', error);
             $('#companyName').text('Error Loading Company Details');
@@ -61,6 +64,77 @@ function displayLatestFinancialData(financialData) {
     } else {
         financialDataDiv.append('<p>No recent financial data available.</p>');
     }
+}
+
+function fetchSentimentAnalysis(companyId) {
+    console.log(`[DEBUG - Frontend] fetchSentimentAnalysis called for companyId: ${companyId}`);
+    $.ajax({
+        url: `/api/llm/sentiment/${companyId}`,
+        method: 'GET',
+        success: function (data) {
+            console.log("[DEBUG] fetchSentimentAnalysis - Received data:", data);
+            if (data && data.sentiment_analysis) {
+                const sentiment = data.sentiment_analysis;
+                console.log("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment Data:", sentiment);
+                $('#newsSentiment').text(sentiment.brief_overall_sentiment || 'Sentiment analysis unavailable.')
+                    .removeClass('sentiment-positive sentiment-negative sentiment-neutral')
+                    .addClass(getSentimentClass(sentiment.brief_overall_sentiment));
+                $('#sentimentDetails').html(`
+                    <p><strong>Market Outlook:</strong> ${sentiment.market_outlook || 'Market outlook unavailable.'}</p>
+                    <p><strong>Detailed Explanation:</strong> ${sentiment.detailed_explanation || 'Detailed explanation unavailable.'}</p>
+                `);
+                console.log("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment displayed.");
+            } else {
+                console.warn("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment data is missing or empty.");
+                $('#newsSentiment').text('Sentiment analysis unavailable.');
+                $('#sentimentDetails').html('<p>Sentiment details unavailable.</p>');
+            }
+        },
+        error: function (error) {
+            console.error("[ERROR - Frontend] fetchSentimentAnalysis - Error:", error);
+            $('#newsSentiment').text('Error loading sentiment analysis.');
+            $('#marketOutlook').text('Error loading market outlook.');
+            $('#sentimentExplanation').text('Error loading detailed explanation.');
+        }
+    });
+}
+
+function getSentimentClass(sentiment) {
+    if (sentiment && typeof sentiment === 'string') {
+        const lowerSentiment = sentiment.toLowerCase();
+        if (lowerSentiment.includes('positive')) {
+            return 'sentiment-positive';
+        } else if (lowerSentiment.includes('negative')) {
+            return 'sentiment-negative';
+        } else if (lowerSentiment.includes('neutral') || lowerSentiment.includes('mixed')) {
+            return 'sentiment-neutral';
+        }
+    }
+    return '';
+}
+function updateLLMReport(companyId) {
+    console.log(`[DEBUG - Frontend] updateLLMReport called for companyId: ${companyId}`);
+    $.ajax({
+        url: `/api/llm/report/${companyId}`,
+        method: 'GET',
+        dataType: 'json', // Explicitly set the expected data type
+        success: function (data) {
+            console.log("[DEBUG - Frontend] updateLLMReport - Success:", data);
+            if (data && data.report) {
+                const report = data.report;
+                console.log("[DEBUG - Frontend] updateLLMReport - Report Data:", report);
+                $('#newsBrief').html(`<p>${report.overall_news_summary || 'News summary unavailable.'}</p>`);
+                console.log("[DEBUG - Frontend] updateLLMReport - News summary updated.");
+            } else {
+                console.warn("[DEBUG - Frontend] updateLLMReport - Report data is missing or empty.");
+                $('#newsBrief').html('<p>News summary unavailable.</p>');
+            }
+        },
+        error: function (error) {
+            console.error("[ERROR - Frontend] updateLLMReport - Error:", error);
+            $('#newsBrief').html('<p>Error loading news summary.</p>');
+        }
+    });
 }
 
 $(document).ready(function () {
@@ -163,6 +237,31 @@ function renderCharts(data, timeframe) { // Ensure timeframe is received here
         });
     }
 }
+function formatMarketCap(marketCap) {
+    if (marketCap >= 1e12) {
+        return (marketCap / 1e12).toFixed(3) + 'T';
+    } else if (marketCap >= 1e9) {
+        return (marketCap / 1e9).toFixed(3) + 'B';
+    } else if (marketCap >= 1e6) {
+        return (marketCap / 1e6).toFixed(3) + 'M';
+    } else if (marketCap !== null && marketCap !== undefined) {
+        return marketCap.toLocaleString();
+    }
+    return 'N/A';
+}
+
+function formatNumber(number) {
+    if (number >= 1e9) {
+        return (number / 1e9).toFixed(2) + 'B';
+    } else if (number >= 1e6) {
+        return (number / 1e6).toFixed(2) + 'M';
+    } else if (number >= 1e3) {
+        return (number / 1e3).toFixed(2) + 'K';
+    } else if (number !== null && number !== undefined) {
+        return number.toLocaleString();
+    }
+    return 'N/A';
+}
 
 function displayLatestFinancialData(financialData) {
     const financialDataDiv = $('#financialData');
@@ -176,8 +275,12 @@ function displayLatestFinancialData(financialData) {
             "Open": financialData.open,
             "Bid": financialData.bid || 'N/A',
             "Ask": financialData.ask || 'N/A',
+            "High": financialData.high || 'N/A',
+            "Low": financialData.low || 'N/A',
             "Day's Range": `${financialData.low || 'N/A'} - ${financialData.high || 'N/A'}`,
-            "52 Week Range": `${financialData['52_week_low'] || 'N/A'} - ${financialData['52_week_high'] || 'N/A'}`,
+            "52 Week Range": `${financialData.fifty_two_week_low || 'N/A'} - ${financialData.fifty_two_week_high || 'N/A'}`,
+            "Revenue": financialData.revenue ? formatNumber(financialData.revenue) : 'N/A', // Added Revenue
+            "Cash Flow": financialData.cash_flow ? formatNumber(financialData.cash_flow) : 'N/A', // Added Cash Flow
             "Volume": financialData.volume ? financialData.volume.toLocaleString() : 'N/A',
             "Avg. Volume": financialData.average_volume ? financialData.average_volume.toLocaleString() : 'N/A'
         };
@@ -185,8 +288,10 @@ function displayLatestFinancialData(financialData) {
         const rightColumnData = {
             "Market Cap (intraday)": financialData.market_cap ? formatMarketCap(financialData.market_cap) : 'N/A',
             "Beta (5Y Monthly)": financialData.beta || 'N/A',
-            "PE Ratio (TTM)": financialData.pe_ratio || 'N/A',
+            "PE Ratio (TTM)": financialData.pe_ratio !== null && financialData.pe_ratio !== undefined ? parseFloat(financialData.pe_ratio).toFixed(4) : 'N/A', // Add PE Ratio
             "EPS (TTM)": financialData.eps || 'N/A',
+            "ROI": financialData.roi ? (financialData.roi * 100).toFixed(2) + '%' : 'N/A', // Display as percentage
+            "Debt to Equity": financialData.debt_to_equity || 'N/A',
             "Earnings Date": financialData.earnings_date || 'N/A',
             "Forward Dividend & Yield": financialData.forward_dividend ? `${financialData.forward_dividend} (${financialData.dividend_yield || 'N/A'})` : 'N/A',
             "Ex-Dividend Date": financialData.ex_dividend_date || 'N/A',

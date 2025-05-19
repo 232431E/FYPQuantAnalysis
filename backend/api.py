@@ -1,12 +1,13 @@
 #backend/api.pi
 from datetime import date, timedelta
 from venv import logger
+import yfinance as yf
 from flask import Flask, Blueprint, jsonify, request
-from sqlalchemy import desc, text
+from sqlalchemy import desc, func, text
 from backend import database
 from sqlalchemy.orm import Session
 from backend.database import get_all_companies, get_db, get_company_by_ticker, get_session_local
-from backend.models.data_model import FinancialData
+from backend.models.data_model import Company, FinancialData
 from backend.routes.data_routes import ingest_data
 from backend.services.data_service import (
     fetch_financial_data,
@@ -25,6 +26,17 @@ from backend.services.llm_service import (
     analyze_news_sentiment_perplexity
 )
 import os
+
+def format_market_cap(market_cap):
+    if market_cap >= 1e12:
+        return f"{market_cap / 1e12:.3f}T"
+    elif market_cap >= 1e9:
+        return f"{market_cap / 1e9:.3f}B"
+    elif market_cap >= 1e6:
+        return f"{market_cap / 1e6:.3f}M"
+    elif market_cap is not None:
+        return f"{market_cap:,.0f}"
+    return 'N/A'
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -208,6 +220,7 @@ def get_financial_data(company_id):
             .order_by(desc(FinancialData.date))\
             .first()
         
+        financial_data_dict = {}
         if latest_financial_data:
             # Create a dictionary from the SQLAlchemy object to include all attributes
             financial_data_dict = {
@@ -217,15 +230,60 @@ def get_financial_data(company_id):
                 'low': latest_financial_data.low,
                 'close': latest_financial_data.close,
                 'volume': latest_financial_data.volume,
-                'roi': latest_financial_data.roi,
-                'eps': latest_financial_data.eps,
-                'pe_ratio': latest_financial_data.pe_ratio,
-                'revenue': latest_financial_data.revenue,
-                'debt_to_equity': latest_financial_data.debt_to_equity,
-                'cash_flow': latest_financial_data.cash_flow,
+                'fifty_two_week_high': None,
+                'fifty_two_week_low': None,
                 # Add any other attributes of the FinancialData model here
             }
-            return jsonify({'financial_data': financial_data_dict}), 200
+            # Calculate 52-week range
+            today = latest_financial_data.date
+            one_year_ago = today - timedelta(days=365)
+
+            # Fetch the highest high and lowest low within the last 52 weeks
+            fifty_two_week_high = db.query(func.max(FinancialData.high))\
+                .filter(FinancialData.company_id == company_id)\
+                .filter(FinancialData.date >= one_year_ago)\
+                .scalar()
+
+            fifty_two_week_low = db.query(func.min(FinancialData.low))\
+                .filter(FinancialData.company_id == company_id)\
+                .filter(FinancialData.date >= one_year_ago)\
+                .scalar()
+
+            financial_data_dict['fifty_two_week_high'] = fifty_two_week_high
+            financial_data_dict['fifty_two_week_low'] = fifty_two_week_low
+            latest_fundamental_data = db.query(FinancialData)\
+                .filter(FinancialData.company_id == company_id)\
+                .filter(FinancialData.roi.isnot(None))\
+                .order_by(desc(FinancialData.date))\
+                .first()
+
+            if latest_fundamental_data:
+                financial_data_dict.update({
+                    'roi': latest_fundamental_data.roi,
+                    'eps': latest_fundamental_data.eps,
+                    'pe_ratio': latest_fundamental_data.pe_ratio,
+                    'revenue': latest_fundamental_data.revenue,
+                    'debt_to_equity': latest_fundamental_data.debt_to_equity,
+                    'cash_flow': latest_fundamental_data.cash_flow,
+                })
+            
+            ticker = db.query(Company.ticker_symbol).filter(Company.company_id == company_id).scalar()
+            if ticker:
+                tk = yf.Ticker(ticker)
+                info = tk.info
+                financial_data_from_yfinance = {
+                    'average_volume': info.get('averageVolume'),
+                    'market_cap': info.get('marketCap'),
+                    'beta': info.get('beta'),
+                    'earnings_date': info.get('earningsDate'),
+                    'forward_dividend': info.get('forwardDividend'),
+                    'dividend_yield': info.get('dividendYield'),
+                    'ex_dividend_date': info.get('exDividendDate'),
+                    'target_mean_price': info.get('targetMeanPrice')
+                }
+                combined_financial_data = {**financial_data_dict, **financial_data_from_yfinance}
+                return jsonify({'financial_data': combined_financial_data}), 200
+            
         else:
             print(f"[DEBUG] /api/company/{company_id}/financial_data: No financial data found in DB.")
             return jsonify({'financial_data': {}}), 200 # Return an empty dictionary

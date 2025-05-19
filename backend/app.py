@@ -16,6 +16,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from atexit import register
 from backend.tasks import daily_news_update, update_all_financial_data
 import logging
+from dotenv import load_dotenv
+load_dotenv()  # for LLM API to be used later
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)

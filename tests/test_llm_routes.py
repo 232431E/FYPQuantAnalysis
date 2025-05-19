@@ -37,17 +37,20 @@ class TestLLMRoutes(unittest.TestCase):
 
     def setUp(self):
         # 1. Set up a test Flask application
-        self.app = create_app(testing=True, start_scheduler =False)
+        self.app = create_app(testing=True, start_scheduler=False)
         self.client = self.app.test_client()
         self.app_context = self.app.app_context()
         self.app_context.push()
+
+        # Register the error handler within the application context
         @self.app.errorhandler(NotFound)
         def not_found_error(error):
             logger.debug(f"Handling NotFound error on app in test context: {error}")
             response = jsonify({'error': error.description})
             response.status_code = 404
             return response
-             
+        self.app.register_error_handler(NotFound, not_found_error) # Explicitly register
+
         logger.debug("NotFound error handler registered in setUp.")
         logger.debug(f"App config SQLALCHEMY_DATABASE_URI: {self.app.config.get('SQLALCHEMY_DATABASE_URI')}")
 
@@ -181,11 +184,11 @@ class TestLLMRoutes(unittest.TestCase):
         - Verifies 404 response and error message.
         """
         logger.debug("Running test_get_llm_report_generation_company_not_found")
-        with self.app.app_context():
-            with self.assertRaises(NotFound) as context:
-                self.client.get('/api/llm/report/999')
-            self.assertEqual(context.exception.code, 404)
-            self.assertEqual(context.exception.description, "Company not found")
+        response = self.client.get('/api/llm/report/999')
+        self.assertEqual(response.status_code, 404)
+        data = response.get_json()
+        self.assertIn('error', data)
+        self.assertEqual(data['error'], "Company not found")
 
     @patch('backend.routes.llm_routes.analyze_news_sentiment_gemini')
     def test_get_llm_report_generation_no_news(self, mock_analyze_gemini):

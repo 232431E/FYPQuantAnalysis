@@ -119,17 +119,19 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
     print(f"[DEBUG]-fetch_historical_fundamentals: Fetching historical fundamentals for {ticker} for the last {years} years.")
     try:
         tk = yf.Ticker(ticker)
-        print(f"[DEBUG]-fetch_historical_fundamentals: Attributes of yf.Ticker('{ticker}'): {dir(tk)}")
+        historical_prices = tk.history(period=f"{years}y")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Historical Prices:\n{historical_prices.head().to_string()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Attributes of yf.Ticker('{ticker}'): {dir(tk)}")
 
         income_statement = tk.income_stmt
         balance_sheet = tk.balance_sheet
         cashflow = tk.cashflow
 
-        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Income Statement:\n{income_statement.head().to_string()}")
-        print(f"[DEBUG]-fetch_historical_fundamentals: Income Statement Index:\n{income_statement.index.to_list()}")
-        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Balance Sheet:\n{balance_sheet.head().to_string()}")
-        print(f"[DEBUG]-fetch_historical_fundamentals: Balance Sheet Index:\n{balance_sheet.index.to_list()}")
-        print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Cash Flow:\n{cashflow.head().to_string()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Income Statement:\n{income_statement.head().to_string()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Income Statement Index:\n{income_statement.index.to_list()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Balance Sheet:\n{balance_sheet.head().to_string()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Balance Sheet Index:\n{balance_sheet.index.to_list()}")
+        #print(f"[DEBUG]-fetch_historical_fundamentals: Fetched Cash Flow:\n{cashflow.head().to_string()}")
 
         if income_statement.empty or balance_sheet.empty or cashflow.empty:
             print(f"[DEBUG]-fetch_historical_fundamentals: WARNING: Retrieved fundamental statements are empty for {ticker}.")
@@ -161,49 +163,61 @@ def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[
 
                     eps_keys = ['BasicEPS', 'EPSBasic', 'DilutedEPS', 'EPSDiluted', 'Basic EPS', 'Diluted EPS']
                     eps = get_value(income_statement, eps_keys, col_is)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: EPS from yfinance = {eps}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: EPS from yfinance = {eps}")
                     fundamental_data[reporting_date]['eps'] = eps
 
                     revenue_keys = ['TotalRevenue', 'Revenue', 'NetSales', 'Total Revenue']
                     revenue = get_value(income_statement, revenue_keys, col_is)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Revenue from yfinance = {revenue}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Revenue from yfinance = {revenue}")
                     fundamental_data[reporting_date]['revenue'] = revenue
 
                     total_debt_keys = ['TotalDebt', 'Total Liabilities', 'Liabilities', 'Long Term Debt And Capital Lease Obligation', 'Long Term Debt', 'Current Debt']
                     total_debt = get_value(balance_sheet, total_debt_keys, col_bs)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Total Debt from yfinance = {total_debt}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Total Debt from yfinance = {total_debt}")
                     fundamental_data[reporting_date]['total_debt'] = total_debt
 
                     stockholders_equity_keys = ["Stockholders' Equity", 'StockholdersEquity', 'Total Stockholders Equity', 'Equity', 'Common Stock Equity']
                     stockholders_equity = get_value(balance_sheet, stockholders_equity_keys, col_bs)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Stockholders Equity from yfinance = {stockholders_equity}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Stockholders Equity from yfinance = {stockholders_equity}")
                     fundamental_data[reporting_date]['stockholders_equity'] = stockholders_equity
 
                     total_debt_val = fundamental_data[reporting_date].get('total_debt')
                     stockholders_equity_val = fundamental_data[reporting_date].get('stockholders_equity')
                     debt_to_equity = total_debt_val / stockholders_equity_val if stockholders_equity_val and total_debt_val is not None and stockholders_equity_val != 0 else None
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Debt-to-Equity from yfinance = {debt_to_equity}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Debt-to-Equity from yfinance = {debt_to_equity}")
                     fundamental_data[reporting_date]['debt_to_equity'] = debt_to_equity
 
                     cash_flow_keys = ['OperatingCashFlow', 'Operating Cash Flow', 'Net Cash from Operations']
                     cash_flow = get_value(cashflow, cash_flow_keys, col_cf)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Operating Cash Flow from yfinance = {cash_flow}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Operating Cash Flow from yfinance = {cash_flow}")
                     fundamental_data[reporting_date]['cash_flow'] = cash_flow
 
                     net_income_keys = ['Net Income', 'NetIncome']
                     net_income = get_value(income_statement, net_income_keys, col_is)
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Net Income from yfinance = {net_income}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Net Income from yfinance = {net_income}")
 
                     roi = net_income / stockholders_equity_val if stockholders_equity_val and net_income is not None and stockholders_equity_val != 0 else None
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: ROI from yfinance = {roi}")
+                    #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: ROI from yfinance = {roi}")
                     fundamental_data[reporting_date]['roi'] = roi
 
-                    # Fetching PE Ratio from fast_info
-                    fast_info = tk.fast_info
-                    pe_ratio = fast_info.get('trailingPE')
-                    print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: PE Ratio from yfinance = {pe_ratio}")
-                    fundamental_data[reporting_date]['pe_ratio'] = pe_ratio
-
+                    # --- START OF PE RATIO CALCULATION ---
+                    # Find a relevant stock price (e.g., price on or close to the reporting date)
+                    try:
+                        # Find the closing price on or the closest day to the reporting date
+                        closest_price_date = min(historical_prices.index, key=lambda date: abs((pd.to_datetime(date).date() - reporting_date).days))
+                        historical_price = historical_prices.loc[closest_price_date]['Close']
+                        #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Historical Price on {closest_price_date.date()} = {historical_price}")
+                        if eps is not None and historical_price is not None and eps != 0:
+                            historical_pe_ratio = historical_price / eps
+                            #print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Calculated Historical PE Ratio = {historical_pe_ratio}")
+                            fundamental_data[reporting_date]['pe_ratio'] = historical_pe_ratio
+                        else:
+                            fundamental_data[reporting_date]['pe_ratio'] = None
+                            print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: Could not calculate Historical PE Ratio (EPS or Price is None or EPS is zero).")
+                    except KeyError:
+                        print(f"[DEBUG]-fetch_historical_fundamentals - {reporting_date.year}: No historical price found for or near {reporting_date}.")
+                        fundamental_data[reporting_date]['pe_ratio'] = None
+                    # --- END OF PE RATIO CALCULATION ---                    
             except IndexError as e:
                 print(f"[DEBUG]-fetch_historical_fundamentals - INDEX ERROR: {e} while accessing column at index {i}")
                 continue
@@ -269,11 +283,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_eps = fund_values.get('eps')
             if yfinance_eps is not None and db_record.eps != yfinance_eps:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating EPS for {db_record.date} with yfinance value: {yfinance_eps} (was {db_record.eps}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating EPS for {db_record.date} with yfinance value: {yfinance_eps} (was {db_record.eps}).")
                 db_record.eps = yfinance_eps
                 updated = True
             elif yfinance_eps is not None and db_record.eps is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting EPS for {db_record.date} with yfinance value: {yfinance_eps}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting EPS for {db_record.date} with yfinance value: {yfinance_eps}.")
                 db_record.eps = yfinance_eps
                 updated = True
             else:
@@ -281,11 +295,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_revenue = fund_values.get('revenue')
             if yfinance_revenue is not None and db_record.revenue != yfinance_revenue:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating Revenue for {db_record.date} with yfinance value: {yfinance_revenue} (was {db_record.revenue}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating Revenue for {db_record.date} with yfinance value: {yfinance_revenue} (was {db_record.revenue}).")
                 db_record.revenue = yfinance_revenue
                 updated = True
             elif yfinance_revenue is not None and db_record.revenue is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting Revenue for {db_record.date} with yfinance value: {yfinance_revenue}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting Revenue for {db_record.date} with yfinance value: {yfinance_revenue}.")
                 db_record.revenue = yfinance_revenue
                 updated = True
             else:
@@ -293,11 +307,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_debt_to_equity = fund_values.get('debt_to_equity')
             if yfinance_debt_to_equity is not None and db_record.debt_to_equity != yfinance_debt_to_equity:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity} (was {db_record.debt_to_equity}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity} (was {db_record.debt_to_equity}).")
                 db_record.debt_to_equity = yfinance_debt_to_equity
                 updated = True
             elif yfinance_debt_to_equity is not None and db_record.debt_to_equity is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting DebtToEquity for {db_record.date} with yfinance value: {yfinance_debt_to_equity}.")
                 db_record.debt_to_equity = yfinance_debt_to_equity
                 updated = True
             else:
@@ -305,11 +319,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_cash_flow = fund_values.get('cash_flow')
             if yfinance_cash_flow is not None and db_record.cash_flow != yfinance_cash_flow:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow} (was {db_record.cash_flow}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow} (was {db_record.cash_flow}).")
                 db_record.cash_flow = yfinance_cash_flow
                 updated = True
             elif yfinance_cash_flow is not None and db_record.cash_flow is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting CashFlow for {db_record.date} with yfinance value: {yfinance_cash_flow}.")
                 db_record.cash_flow = yfinance_cash_flow
                 updated = True
             else:
@@ -317,11 +331,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_roi = fund_values.get('roi')
             if yfinance_roi is not None and db_record.roi != yfinance_roi:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating ROI for {db_record.date} with yfinance value: {yfinance_roi} (was {db_record.roi}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating ROI for {db_record.date} with yfinance value: {yfinance_roi} (was {db_record.roi}).")
                 db_record.roi = yfinance_roi
                 updated = True
             elif yfinance_roi is not None and db_record.roi is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting ROI for {db_record.date} with yfinance value: {yfinance_roi}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting ROI for {db_record.date} with yfinance value: {yfinance_roi}.")
                 db_record.roi = yfinance_roi
                 updated = True
             else:
@@ -329,11 +343,11 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
 
             yfinance_pe_ratio = fund_values.get('pe_ratio')
             if yfinance_pe_ratio is not None and db_record.pe_ratio != yfinance_pe_ratio:
-                print(f"[DEBUG]-store_historical_fundamentals: Updating PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio} (was {db_record.pe_ratio}).")
+                #print(f"[DEBUG]-store_historical_fundamentals: Updating PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio} (was {db_record.pe_ratio}).")
                 db_record.pe_ratio = yfinance_pe_ratio
                 updated = True
             elif yfinance_pe_ratio is not None and db_record.pe_ratio is None:
-                print(f"[DEBUG]-store_historical_fundamentals: Setting PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio}.")
+                #print(f"[DEBUG]-store_historical_fundamentals: Setting PERatio for {db_record.date} with yfinance value: {yfinance_pe_ratio}.")
                 db_record.pe_ratio = yfinance_pe_ratio
                 updated = True
             else:
