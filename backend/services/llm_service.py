@@ -1,5 +1,6 @@
 # backend/services/llm_service.py
 import json
+import re 
 import os
 import logging
 import requests
@@ -51,18 +52,15 @@ def analyze_news_sentiment_gemini(news_articles: List[Dict[str, Any]], prompt: O
     print("[DEBUG - Service - Gemini] analyze_news_sentiment_gemini called with:", news_articles, "prompt:", prompt)
     if not news_articles:
         print("[DEBUG - Service - Gemini] No news articles to analyze.")
-        return {"brief_overall_sentiment": "Neutral", "market_outlook": "No news to analyze.", "detailed_explanation": "No news available."}
+        return {"brief_overall_sentiment": "Neutral", "market_outlook": "No news to analyze.", "detailed_explanation": "No news available.", "detailed_sentiment": "No news available."}
 
     google_api_key = os.environ.get('GOOGLE_API_KEY')
     if not google_api_key:
-        logging.warning("GOOGLE_API_KEY environment variable not set.")                
+        logging.warning("GOOGLE_API_KEY environment variable not set.")
         print("[DEBUG - Service - Gemini] GOOGLE_API_KEY not configured.")
         return {"error": "Gemini API key not configured."}
 
     genai.configure(api_key=google_api_key)
-    #print("[DEBUG - Service - Gemini] Available Models:")
-    #for model_info in genai.list_models():
-    #    print(f"  - {model_info.name}: {model_info.supported_generation_methods}")
     model = genai.GenerativeModel(llm_model)
 
     if prompt:
@@ -73,24 +71,45 @@ def analyze_news_sentiment_gemini(news_articles: List[Dict[str, Any]], prompt: O
             response.resolve()
             print("[DEBUG - Service - Gemini] Gemini API Response:", response.text if response and response.parts and response.parts[0].text else response)
             if response and response.parts and response.parts[0].text:
-                llm_response_text = response.parts[0].text.strip()
-            # Remove potential code block formatting (backticks)
-                if llm_response_text.startswith("```json"):
-                    llm_response_text = llm_response_text[len("```json"):].strip()
-                if llm_response_text.endswith("```"):
-                    llm_response_text = llm_response_text[:-len("```")].strip()
+                raw_llm_response_text = response.parts[0].text.strip()
+                print("[DEBUG - Service - Gemini] Gemini API Raw Response Text:", raw_llm_response_text)
+                # Use regex to find the JSON block
+                json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_llm_response_text, re.DOTALL)
+                if json_match:
+                    json_string = json_match.group(1)
+                    print("[DEBUG - Service - Gemini] Extracted JSON string with regex:", json_string)
+                else:
+                    # Fallback if no ```json block is found, try to parse the whole response
+                    # This handles cases where Gemini directly returns JSON without the code block markers
+                    json_string = raw_llm_response_text
+                    print("[DEBUG - Service - Gemini] No JSON block markers found, attempting to parse full response as JSON.")
                 try:
-                    llm_output = json.loads(response.parts[0].text.strip())
+                    llm_output = json.loads(json_string)
                     print("[DEBUG - Service - Gemini] Parsed JSON response:", llm_output)
-                    return {"sentiment_analysis": llm_output}  # Return under 'sentiment_analysis'
-                except json.JSONDecodeError:
-                    logging.warning(f"Could not decode Gemini response as JSON: {response.parts[0].text}")
-                    print(f"[DEBUG - Service - Gemini] Could not decode JSON response: {response.parts[0].text}")
-                    return {"error": "Invalid JSON response from Gemini.", "raw_response": response.parts[0].text.strip()}
+                    # We already have the overall sentiment in the JSON response
+                    brief_sentiment = llm_output.get("brief_overall_sentiment", "Neutral")
+                    return {
+                        "overall_news_summary": llm_output.get("overall_news_summary"),
+                        "brief_overall_sentiment": llm_output.get("brief_overall_sentiment"),
+                        "detailed_sentiment": llm_output.get("brief_overall_sentiment"), # Still using brief as detailed here for now
+                        "market_outlook": llm_output.get("market_outlook"),
+                        "detailed_explanation": llm_output.get("detailed_explanation")
+                    }
+                except json.JSONDecodeError as e:
+                    logging.warning(f"Could not decode Gemini response as JSON: {json_string[:200]}... Error: {e}") # Log truncated string for brevity
+                    print(f"[DEBUG - Service - Gemini] Could not decode JSON response: {json_string[:200]}... Error: {e}")
+                    # Fallback to text-based inference if JSON decoding fails
+                    brief_sentiment = _infer_sentiment(raw_llm_response_text) # Use raw_llm_response_text for inference
+                    return {
+                        "brief_overall_sentiment": brief_sentiment,
+                        "market_outlook": "Analysis failed due to decoding error.",
+                        "detailed_explanation": f"Could not decode JSON response. Raw: {raw_llm_response_text}",
+                        "detailed_sentiment": f"Error during analysis: {e}"
+                    }
             else:
                 logging.warning("Gemini API response was empty or did not contain text for custom prompt.")
                 print("[DEBUG - Service - Gemini] Gemini API response empty for custom prompt.")
-                return {"error": "Empty response from Gemini."}
+                return {"brief_overall_sentiment": "Neutral", "market_outlook": "Empty response from LLM.", "detailed_explanation": "Empty response from LLM.", "detailed_sentiment": "Empty response from LLM."}
         except Exception as e:
             logging.error(f"Error calling Gemini API with custom prompt: {e}")
             print(f"[DEBUG - Service - Gemini] Error calling Gemini API with custom prompt: {e}")
@@ -103,15 +122,22 @@ def analyze_news_sentiment_gemini(news_articles: List[Dict[str, Any]], prompt: O
             print("[DEBUG - Service - Gemini] Calling Gemini API with default prompt...")
             response = model.generate_content([default_prompt])
             response.resolve()
-            print("[DEBUG - Service - Gemini] Gemini API Response (default):", response.text if response and response.parts and response.parts[0].text else response)
-            if response and response.parts and response.parts[0].text:
-                overall_sentiment = _infer_sentiment(response.parts[0].text.strip())                
-                print("[DEBUG - Service - Gemini] Sentiment Summary (default):", response.parts[0].text.strip(), "Overall Sentiment:", overall_sentiment)
-                return {"brief": response.parts[0].text.strip(), "sentiment": overall_sentiment}
+            raw_sentiment_response = response.text if response and response.parts and response.parts[0].text else None # Capture the raw text
+            print("[DEBUG - Service - Gemini] Gemini API Response (default):", raw_sentiment_response)
+            if raw_sentiment_response:
+                llm_response_text = raw_sentiment_response.strip()
+                brief_sentiment = _infer_sentiment(llm_response_text)
+                return {
+                    "overall_news_summary": "based on provided news",
+                    "brief_overall_sentiment": brief_sentiment,
+                    "detailed_sentiment": raw_sentiment_response, # Include the detailed sentiment breakdown
+                    "market_outlook": "Market outlook will be based on the detailed report.",
+                    "detailed_explanation": f"Overall sentiment derived from the news: {llm_response_text}"
+                }
             else:
                 logging.warning("Gemini API response was empty or did not contain text for default prompt.")
                 print("[DEBUG - Service - Gemini] Gemini API response empty for default prompt.")
-                return {"brief": "Gemini API response empty.", "sentiment": "Neutral"}
+                return {"brief_overall_sentiment": "Neutral", "market_outlook": "Empty response from LLM.", "detailed_explanation": "Empty response from LLM.", "detailed_sentiment": "Empty response from LLM."}
         except Exception as e:
             logging.error(f"Error calling Gemini API with default prompt: {e}")
             print(f"[DEBUG - Service - Gemini] Error calling Gemini API with default prompt: {e}")
@@ -126,7 +152,7 @@ def analyze_news_sentiment(news_articles: List[Dict[str, Any]], llm_provider: st
         return analyze_news_sentiment_gemini(news_articles, prompt, llm_model)
     else:
         logging.warning(f"LLM provider '{llm_provider}' not recognized. Using placeholder sentiment analysis.")
-        return {"brief_overall_sentiment": "Neutral", "market_outlook": "Provider not specified.", "detailed_explanation": "Specify 'perplexity' or 'gemini' as llm_provider."}
+        return {"brief_overall_sentiment": "Neutral", "market_outlook": "Provider not specified.", "detailed_explanation": "Specify 'perplexity' or 'gemini' as llm_provider.", "detailed_sentiment": "Provider not specified."}
 
 def _infer_sentiment(text: str) -> str:
     lower_text = text.lower()

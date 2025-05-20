@@ -1,4 +1,5 @@
 //frontend/static/js/company_details.js
+let companyId = null; 
 function fetchCompanyDetails(ticker) {
     $.ajax({
         url: `/api/company/${ticker}`,
@@ -19,8 +20,11 @@ function fetchCompanyDetails(ticker) {
                 fetchGraphData(companyId, 'weekly');
                 fetchLatestFinancialData(companyId);
                 displayTopNews(data.company_news, data.industry_news);
-                fetchSentimentAnalysis(companyId);
-                updateLLMReport(companyId);
+                if (companyId) {
+                    updateLLMReport(companyId);
+                } else {
+                    console.error("[ERROR] Company ID not found. Cannot fetch LLM report.");
+                }
                 console.log("[DEBUG - Frontend] fetchCompanyDetails - Company details, graph, financials, news, sentiment, and report initiated.");
             } else {
                 console.error('Error fetching company details:', error);
@@ -69,70 +73,123 @@ function displayLatestFinancialData(financialData) {
 function fetchSentimentAnalysis(companyId) {
     console.log(`[DEBUG - Frontend] fetchSentimentAnalysis called for companyId: ${companyId}`);
     $.ajax({
-        url: `/api/llm/sentiment/${companyId}`,
+        url: `/api/llm/sentiment/${companyId}`, // This endpoint is returning {"report": { ... }} as per your logs
         method: 'GET',
         success: function (data) {
             console.log("[DEBUG] fetchSentimentAnalysis - Received data:", data);
-            if (data && data.sentiment_analysis) {
-                const sentiment = data.sentiment_analysis;
+
+            // FIX HERE: Access data.report first, then its nested properties
+            if (data && data.report) { // Check if 'report' key exists
+                const sentiment = data.report; // Assign the 'report' object to 'sentiment' for consistency
                 console.log("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment Data:", sentiment);
+
+                // Update News Summary Section
+                // Assuming you have an element with ID 'newsSummarySection'
+                $('#newsSummarySection').html(`
+                    <p><strong>Overall News Summary:</strong> ${sentiment.overall_news_summary || 'News summary unavailable.'}</p>
+                `);
+
+                // Update the brief sentiment display (e.g., "Mixed")
                 $('#newsSentiment').text(sentiment.brief_overall_sentiment || 'Sentiment analysis unavailable.')
                     .removeClass('sentiment-positive sentiment-negative sentiment-neutral')
                     .addClass(getSentimentClass(sentiment.brief_overall_sentiment));
+
+                // Update the sentiment details section
                 $('#sentimentDetails').html(`
                     <p><strong>Market Outlook:</strong> ${sentiment.market_outlook || 'Market outlook unavailable.'}</p>
                     <p><strong>Detailed Explanation:</strong> ${sentiment.detailed_explanation || 'Detailed explanation unavailable.'}</p>
                 `);
                 console.log("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment displayed.");
             } else {
-                console.warn("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment data is missing or empty.");
+                console.warn("[DEBUG - Frontend] fetchSentimentAnalysis - Sentiment data is missing or empty or incorrect structure.");
+                $('#newsSummarySection').html('<p>News summary unavailable.</p>');
                 $('#newsSentiment').text('Sentiment analysis unavailable.');
                 $('#sentimentDetails').html('<p>Sentiment details unavailable.</p>');
             }
         },
         error: function (error) {
             console.error("[ERROR - Frontend] fetchSentimentAnalysis - Error:", error);
+            $('#newsSummarySection').html('<p>Error loading news summary.</p>');
             $('#newsSentiment').text('Error loading sentiment analysis.');
-            $('#marketOutlook').text('Error loading market outlook.');
-            $('#sentimentExplanation').text('Error loading detailed explanation.');
+            $('#sentimentDetails').html('<p>Error loading sentiment details.</p>');
         }
     });
 }
 
+// Function to determine sentiment class for styling
 function getSentimentClass(sentiment) {
     if (sentiment && typeof sentiment === 'string') {
         const lowerSentiment = sentiment.toLowerCase();
-        if (lowerSentiment.includes('positive')) {
+        if (lowerSentiment.includes('positive') || lowerSentiment.includes('optimistic')) {
             return 'sentiment-positive';
         } else if (lowerSentiment.includes('negative')) {
             return 'sentiment-negative';
-        } else if (lowerSentiment.includes('neutral') || lowerSentiment.includes('mixed')) {
+        } else if (lowerSentiment.includes('neutral') || lowerSentiment.includes('mixed') || lowerSentiment.includes('cautious')) {
             return 'sentiment-neutral';
         }
     }
-    return '';
+    return ''; // Default or unknown sentiment
 }
+
+// Function to fetch and display ALL LLM Report data (News Summary, Sentiment, Outlook, Explanation)
 function updateLLMReport(companyId) {
     console.log(`[DEBUG - Frontend] updateLLMReport called for companyId: ${companyId}`);
     $.ajax({
-        url: `/api/llm/report/${companyId}`,
+        url: `/api/llm/sentiment/${companyId}`, // This endpoint is returning {"report": { ... }} as per your latest log
         method: 'GET',
-        dataType: 'json', // Explicitly set the expected data type
+        dataType: 'json', // Ensures jQuery parses the response as JSON
         success: function (data) {
-            console.log("[DEBUG - Frontend] updateLLMReport - Success:", data);
-            if (data && data.report) {
-                const report = data.report;
-                console.log("[DEBUG - Frontend] updateLLMReport - Report Data:", report);
-                $('#newsBrief').html(`<p>${report.overall_news_summary || 'News summary unavailable.'}</p>`);
-                console.log("[DEBUG - Frontend] updateLLMReport - News summary updated.");
+            console.log("[DEBUG - Frontend] updateLLMReport - Received raw data from backend:", data);
+
+            // *******************************************************************
+            // CRITICAL FIX: Access the 'report' object within the received 'data'
+            const report = data.report; 
+            // *******************************************************************
+
+            console.log("[DEBUG - Frontend] updateLLMReport - Parsed report data (how JS sees it):", report);
+
+            // Validate that the essential fields exist within the 'report' object
+            if (report && report.overall_news_summary && report.brief_overall_sentiment && report.market_outlook && report.detailed_explanation) {
+
+                // 1. Update News Summary Section
+                // Target the div with id="newsBrief" in your HTML
+                $('#newsBrief').html(`<p><strong>Overall News Summary:</strong> ${report.overall_news_summary}</p>`);
+                console.log("[DEBUG - Frontend] News Summary updated to:", report.overall_news_summary);
+
+                // 2. Update the main 'Overall Sentiment' display
+                // Target the span with id="newsSentiment" in your HTML
+                $('#newsSentiment').text(report.brief_overall_sentiment)
+                    .removeClass('sentiment-positive sentiment-negative sentiment-neutral') // Clear previous classes
+                    .addClass(getSentimentClass(report.brief_overall_sentiment));
+                console.log("[DEBUG - Frontend] Brief Overall Sentiment updated to:", report.brief_overall_sentiment);
+
+                // 3. Update the 'Sentiment Report' section with Market Outlook and Detailed Explanation
+                // Target the div with id="sentimentDetails" in your HTML
+                $('#sentimentDetails').html(`
+                    <p><strong>Market Outlook:</strong> ${report.market_outlook}</p>
+                    <p><strong>Detailed Explanation:</strong></p>
+                    <div>${report.detailed_explanation}</div> 
+                    <p><strong>This report is AI generated so please do your own research and take this as a pinch of salt.</strong></p>
+                    `);
+                console.log("[DEBUG - Frontend] Market Outlook updated to:", report.market_outlook);
+                console.log("[DEBUG - Frontend] Detailed Explanation updated.");
+
+                console.log("[DEBUG - Frontend] All sentiment report fields updated successfully.");
+
             } else {
-                console.warn("[DEBUG - Frontend] updateLLMReport - Report data is missing or empty.");
+                console.warn("[DEBUG - Frontend] updateLLMReport - Essential report data is missing or incomplete. Data:", report);
+                // Fallback for missing data
                 $('#newsBrief').html('<p>News summary unavailable.</p>');
+                $('#newsSentiment').text('Sentiment analysis unavailable.');
+                $('#sentimentDetails').html('<p>Sentiment details unavailable. Data structure incorrect or incomplete.</p>');
             }
         },
-        error: function (error) {
-            console.error("[ERROR - Frontend] updateLLMReport - Error:", error);
+        error: function (xhr, status, error) {
+            console.error("[ERROR - Frontend] updateLLMReport - AJAX Error:", status, error, xhr);
+            // Fallback for AJAX errors
             $('#newsBrief').html('<p>Error loading news summary.</p>');
+            $('#newsSentiment').text('Error loading sentiment analysis.');
+            $('#sentimentDetails').html('<p>Error loading sentiment details.</p>');
         }
     });
 }

@@ -674,7 +674,6 @@ def store_news_articles(db: Session, company_id: int, news_articles: List[Dict[s
     else:
         logging.info(f"No new {news_type} news articles to add")
 
-
 def get_stored_news(db: Session, company_id: int, limit: int = 20) -> List[News]:
     """Retrieves stored news articles for a given company."""
     logging.info(f"Getting stored news for company ID: {company_id}, limit: {limit}")
@@ -715,7 +714,6 @@ def predict_financial_trends(financial_data: Optional[List[Dict[str, Any]]]) -> 
 
     return trends
 
-
 def get_similar_companies(industry: Optional[str]) -> List[str]:
     """Retrieves a list of similar companies based on the industry."""
     if not industry:
@@ -733,7 +731,6 @@ def get_similar_companies(industry: Optional[str]) -> List[str]:
     }
 
     return similar_companies_data.get(industry, ["No similar companies found for this industry"])
-
 
 if __name__ == '__main__':
     # Example usage (for testing purposes)

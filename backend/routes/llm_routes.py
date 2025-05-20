@@ -38,24 +38,34 @@ def get_company_news_sentiment(company_id):
                 "market_outlook": "Insufficient information.",
                 "detailed_explanation": "No news available to analyze political or geopolitical factors."
             }}), 200
+        company_name = company.company_name
+        ticker = company.ticker_symbol
+        industry = company.industry
         # Construct the prompt for Gemini
-        news_text = "\n".join([f"Title: {news.title}\nLink: {news.link}\nSummary: {news.summary}" for news in news_articles])
-        prompt = f"""Analyze the overall sentiment of the following news articles for {company.company_name} (ticker: {company.ticker_symbol}, industry: {company.industry})
-        based on the following recent news, considering potential political and geopolitical factors that might influence the company or its market:
+        news_articles_formatted = "\n".join([
+            f"Title: {article.title}\nLink: {article.link}\nSummary: {article.summary}"
+            for article in news_articles
+        ])
+        custom_prompt = f"""Analyze the overall sentiment of the following news articles for {company_name} (ticker: {ticker}, industry: {industry})
+        based on the following recent news, considering potential environmental factors, company structure(human factors), financial reports, political and geopolitical factors that might influence the company or its market:
 
-         **Recent News:**
-        {news_text}
+        **Recent News:**
+        {news_articles_formatted}
+
         Provide a sentiment analysis with the following structure:
+        - **Overall News Summary:** (A concise summary of the key news)
         - **Brief Overall Sentiment:** (e.g., Positive, Negative, Mixed, Neutral)
         - **Market Outlook:** Describe the potential near-term market outlook for this company based on the news and considered factors.
-        - **Detailed Explanation:** Explain how you arrived at this sentiment and outlook, explicitly mentioning any political or geopolitical factors that played a role in your analysis.
+        - **Detailed Explanation:** Explain how you arrived at this sentiment and outlook, explicitly mentioning any factors that played a role in your analysis.
 
-        Return your analysis as a JSON object with the keys: "brief_overall_sentiment", "market_outlook", and "detailed_explanation".
+        Return your analysis as a JSON object with the keys: "overall_news_summary", "brief_overall_sentiment", "market_outlook", and "detailed_explanation".
         """
-        print("[DEBUG - Backend] Constructed LLM Prompt:\n", prompt)
-        sentiment_result = analyze_news_sentiment_gemini(news_articles, prompt=prompt, llm_model='gemini-2.0-flash-lite')
+        print("[DEBUG - Backend] Constructed LLM Prompt:\n", custom_prompt)
+        sentiment_result = analyze_news_sentiment_gemini(
+            news_articles=[{'title': n.title, 'description': n.summary, 'link': n.link} for n in news_articles],
+            prompt=custom_prompt, llm_model='gemini-2.0-flash-lite')
         print("[DEBUG - Backend] Received sentiment_result from service:\n", sentiment_result)
-        return jsonify({"sentiment_analysis": sentiment_result}), 200
+        return jsonify({"report": sentiment_result}), 200
     except NotFound:
         raise  # Re-raise NotFound to be handled by Flask's default error handler
     except Exception as e:
