@@ -558,7 +558,7 @@ def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
     guardian_api_key = "ce66226f-693d-42a5-9023-3b003666df2a"  # Your API key
     guardian_endpoint = 'https://content.guardianapis.com/search'
     if not guardian_api_key:
-        logging.warning("The Guardian API key is missing.")
+        print("The Guardian API key is missing.")
         return []
     try:
         query = f'"{industry}"'  # Search for the industry
@@ -570,12 +570,12 @@ def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
             'order-by': 'newest',
             'page-size': count
         }
-        logging.debug(f"DEBUG: Fetching industry news for '{industry}' using The Guardian API with params: {params}")
+        print(f"DEBUG: Fetching industry news for '{industry}' using The Guardian API with params: {params}")
         response = requests.get(guardian_endpoint, params=params)
-        logging.debug(f"DEBUG: The Guardian API response status code: {response.status_code}")
+        print(f"DEBUG: The Guardian API response status code: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        logging.info(f"The Guardian API response for industry '{industry}': {data}")
+        print(f"The Guardian API response for industry '{industry}': {data}")
         results = data.get('response', {}).get('results', [])
         logging.debug(f"DEBUG: Number of results from The Guardian API: {len(results)}")
         industry_news = []
@@ -590,7 +590,7 @@ def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
                 "publishedAt": fields.get('webPublicationDate'),
                 "source": {"name": "The Guardian"}
             })
-        logging.info(f"Successfully fetched {len(industry_news)} industry news articles for '{industry}' from The Guardian.")
+        print(f"Successfully fetched {len(industry_news)} industry news articles for '{industry}' from The Guardian.")
         return industry_news
     except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching industry news from The Guardian for '{industry}': {e}")
@@ -614,7 +614,7 @@ def fetch_latest_news(ticker: str, industry: str, exchange: str, company_name: s
     try:
         industry_news = fetch_industry_news(industry, count=3)
     except Exception as e:
-        logging.error(f"Error fetching industry news (Placeholder): {e}")
+        print(f"Error fetching industry news (Placeholder): {e}")
         industry_news = []
 
     return company_news, industry_news

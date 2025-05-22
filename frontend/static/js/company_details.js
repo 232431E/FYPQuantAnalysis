@@ -70,6 +70,7 @@ function displayLatestFinancialData(financialData) {
     }
 }
 
+// fetchSentimentAnalysis might not be relevant as replaced with updateLLMReport
 function fetchSentimentAnalysis(companyId) {
     console.log(`[DEBUG - Frontend] fetchSentimentAnalysis called for companyId: ${companyId}`);
     $.ajax({
@@ -116,13 +117,12 @@ function fetchSentimentAnalysis(companyId) {
     });
 }
 
-// Function to determine sentiment class for styling
 function getSentimentClass(sentiment) {
     if (sentiment && typeof sentiment === 'string') {
         const lowerSentiment = sentiment.toLowerCase();
         if (lowerSentiment.includes('positive') || lowerSentiment.includes('optimistic')) {
             return 'sentiment-positive';
-        } else if (lowerSentiment.includes('negative')) {
+        } else if (lowerSentiment.includes('negative') || lowerSentiment.includes('bearish')) { // Added 'bearish'
             return 'sentiment-negative';
         } else if (lowerSentiment.includes('neutral') || lowerSentiment.includes('mixed') || lowerSentiment.includes('cautious')) {
             return 'sentiment-neutral';
@@ -131,65 +131,86 @@ function getSentimentClass(sentiment) {
     return ''; // Default or unknown sentiment
 }
 
-// Function to fetch and display ALL LLM Report data (News Summary, Sentiment, Outlook, Explanation)
 function updateLLMReport(companyId) {
     console.log(`[DEBUG - Frontend] updateLLMReport called for companyId: ${companyId}`);
     $.ajax({
-        url: `/api/llm/sentiment/${companyId}`, // This endpoint is returning {"report": { ... }} as per your latest log
+        url: `/api/llm/sentiment/${companyId}`, 
         method: 'GET',
-        dataType: 'json', // Ensures jQuery parses the response as JSON
+        dataType: 'json', 
         success: function (data) {
             console.log("[DEBUG - Frontend] updateLLMReport - Received raw data from backend:", data);
-
-            // *******************************************************************
-            // CRITICAL FIX: Access the 'report' object within the received 'data'
-            const report = data.report; 
-            // *******************************************************************
-
-            console.log("[DEBUG - Frontend] updateLLMReport - Parsed report data (how JS sees it):", report);
-
-            // Validate that the essential fields exist within the 'report' object
-            if (report && report.overall_news_summary && report.brief_overall_sentiment && report.market_outlook && report.detailed_explanation) {
-
-                // 1. Update News Summary Section
-                // Target the div with id="newsBrief" in your HTML
+            const report = data.report; // Access the nested 'report' object
+            console.log("[DEBUG - Frontend] updateLLMReport - Parsed report data (after accessing 'report' key):", report);
+            if (report && report.overall_news_summary && report.brief_overall_sentiment && 
+                report.reasons_for_sentiment && report.market_outlook && 
+                report.detailed_explanation && report.key_offerings !== undefined && // Check for existence for key_offerings
+                report.financial_dates !== undefined) { // Check for existence for financial_dates
                 $('#newsBrief').html(`<p><strong>Overall News Summary:</strong> ${report.overall_news_summary}</p>`);
-                console.log("[DEBUG - Frontend] News Summary updated to:", report.overall_news_summary);
-
-                // 2. Update the main 'Overall Sentiment' display
-                // Target the span with id="newsSentiment" in your HTML
-                $('#newsSentiment').text(report.brief_overall_sentiment)
-                    .removeClass('sentiment-positive sentiment-negative sentiment-neutral') // Clear previous classes
-                    .addClass(getSentimentClass(report.brief_overall_sentiment));
-                console.log("[DEBUG - Frontend] Brief Overall Sentiment updated to:", report.brief_overall_sentiment);
-
-                // 3. Update the 'Sentiment Report' section with Market Outlook and Detailed Explanation
-                // Target the div with id="sentimentDetails" in your HTML
-                $('#sentimentDetails').html(`
-                    <p><strong>Market Outlook:</strong> ${report.market_outlook}</p>
-                    <p><strong>Detailed Explanation:</strong></p>
-                    <div>${report.detailed_explanation}</div> 
-                    <p><strong>This report is AI generated so please do your own research and take this as a pinch of salt.</strong></p>
-                    `);
-                console.log("[DEBUG - Frontend] Market Outlook updated to:", report.market_outlook);
-                console.log("[DEBUG - Frontend] Detailed Explanation updated.");
+                console.log("[DEBUG - Frontend] News Summary updated.");
+                $('#briefOverallSentimentText').html(report.brief_overall_sentiment) // Use .html() as it might contain HTML for score explanation
+                    .removeClass('sentiment-positive sentiment-negative sentiment-neutral') 
+                    .addClass(getSentimentClass(report.brief_overall_sentiment)); 
+                console.log("[DEBUG - Frontend] Brief Overall Sentiment updated.");
+                $('#reasonsForSentimentContent').html(`<div>${report.reasons_for_sentiment}</div>`);
+                console.log("[DEBUG - Frontend] Reasons for Sentiment updated.");
+                $('#marketOutlookContent').html(`<strong>Market Outlook:</strong> ${report.market_outlook}`) // Use .html()
+                    .removeClass('sentiment-positive sentiment-negative sentiment-neutral') 
+                    .addClass(getSentimentClass(report.market_outlook));
+                console.log("[DEBUG - Frontend] Market Outlook updated.");
+                $('#detailedExplanationContent').html(`<div>${report.detailed_explanation}</div>`);
+                console.log("[DEBUG - Frontend] Detailed Explanation (Market Outlook) updated.");
+                const keyOfferingsList = $('#keyOfferingsList');
+                keyOfferingsList.empty(); 
+                if (Array.isArray(report.key_offerings) && report.key_offerings.length > 0) {
+                    report.key_offerings.forEach(item => {
+                        keyOfferingsList.append(`<li>${item}</li>`);
+                    });
+                } else {
+                    keyOfferingsList.append(`<li>No key products/services/subsidiaries identified.</li>`);
+                }
+                console.log("[DEBUG - Frontend] Key Offerings updated.");
+                const financialDatesList = $('#financialDatesList');
+                financialDatesList.empty(); // Clear previous content
+                if (Array.isArray(report.financial_dates) && report.financial_dates.length > 0) {
+                    $('#financialDatesContent').html('<p>Here are some key financial events and their potential impact:</p>'); // Add introductory text
+                    report.financial_dates.forEach(event => {
+                        financialDatesList.append(`
+                            <li>
+                                <strong>Date:</strong> ${event.date || 'N/A'}<br>
+                                <strong>Event:</strong> ${event.event || 'N/A'}<br>
+                                <strong>Impact:</strong> ${event.impact || 'No impact explanation.'}
+                            </li>
+                        `);
+                    });
+                } else {
+                    $('#financialDatesContent').html('<p>No significant upcoming or recent financial events identified.</p>');
+                }
+                console.log("[DEBUG - Frontend] Financial Dates updated.");
 
                 console.log("[DEBUG - Frontend] All sentiment report fields updated successfully.");
 
             } else {
-                console.warn("[DEBUG - Frontend] updateLLMReport - Essential report data is missing or incomplete. Data:", report);
-                // Fallback for missing data
+                console.warn("[DEBUG - Frontend] updateLLMReport - Essential report data is missing or incomplete. Data received:", data, "Parsed report object:", report);
                 $('#newsBrief').html('<p>News summary unavailable.</p>');
-                $('#newsSentiment').text('Sentiment analysis unavailable.');
-                $('#sentimentDetails').html('<p>Sentiment details unavailable. Data structure incorrect or incomplete.</p>');
+                $('#briefOverallSentimentText').html('Sentiment analysis unavailable.');
+                $('#reasonsForSentimentContent').html('<p>Reasons for sentiment unavailable.</p>');
+                $('#marketOutlookContent').html('<p>Market outlook unavailable.</p>');
+                $('#detailedExplanationContent').html('<p>Detailed explanation for market outlook unavailable.</p>');
+                $('#keyOfferingsList').html('<li>Key offerings unavailable.</li>');
+                $('#financialDatesContent').html('<p>Financial event details unavailable.</p>');
+                $('#financialDatesList').empty(); // Ensure list is empty too
             }
         },
         error: function (xhr, status, error) {
             console.error("[ERROR - Frontend] updateLLMReport - AJAX Error:", status, error, xhr);
-            // Fallback for AJAX errors
             $('#newsBrief').html('<p>Error loading news summary.</p>');
-            $('#newsSentiment').text('Error loading sentiment analysis.');
-            $('#sentimentDetails').html('<p>Error loading sentiment details.</p>');
+            $('#briefOverallSentimentText').html('Error loading sentiment analysis.');
+            $('#reasonsForSentimentContent').html('<p>Error loading reasons for sentiment.</p>');
+            $('#marketOutlookContent').html('<p>Error loading market outlook.</p>');
+            $('#detailedExplanationContent').html('<p>Error loading detailed explanation for market outlook.</p>');
+            $('#keyOfferingsList').html('<li>Error loading key offerings.</li>');
+            $('#financialDatesContent').html('<p>Error loading financial event details.</p>');
+            $('#financialDatesList').empty(); // Ensure list is empty too
         }
     });
 }
@@ -330,8 +351,8 @@ function displayLatestFinancialData(financialData) {
         const leftColumnData = {
             "Previous Close": financialData.close,
             "Open": financialData.open,
-            "Bid": financialData.bid || 'N/A',
-            "Ask": financialData.ask || 'N/A',
+            //"Bid": financialData.bid || 'N/A',
+            //"Ask": financialData.ask || 'N/A',
             "High": financialData.high || 'N/A',
             "Low": financialData.low || 'N/A',
             "Day's Range": `${financialData.low || 'N/A'} - ${financialData.high || 'N/A'}`,
@@ -389,27 +410,30 @@ function displayTopNews(companyNews, industryNews) {
     topNewsList.empty();
     console.log("[DEBUG] displayTopNews - companyNews:", companyNews);   // Debug: Log companyNews
     console.log("[DEBUG] displayTopNews - industryNews:", industryNews);   // Debug: Log industryNews
-
     let newsHTML = '';
-
     // Helper function to generate news item HTML
     function generateNewsItemHTML(news) {
+        // Ensure news.url is a string and not null/undefined
+        const newsUrl = news.url ? news.url : '#'; 
+        // Ensure news.source is an object before accessing .name
+        const sourceName = news.source && news.source.name ? news.source.name : 'Unknown Source';
+        // Format date safely
+        const publishedDate = news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : '';
         return `
             <div class="col-12 col-md-4 news-item">
                 <div class="card h-100">
                     <div class="card-body">
                         <h4 class="news-headline card-title">
-                            <a href="${news.url}" target="_blank" class="stretched-link">${news.title}</a>
+                            <a href="${newsUrl}" target="_blank" class="stretched-link">${news.title}</a>
                         </h4>
-                        <p class="news-origin card-subtitle mb-2 text-muted">${news.source ? news.source.name : 'Unknown Source'}</p>
+                        <p class="news-origin card-subtitle mb-2 text-muted">${sourceName}</p>
                         <p class="news-summary card-text three-line-clamp">${news.description || 'No summary available.'}</p>
-                        <p class="news-date card-text"><small class="text-muted">${news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : ''}</small></p>
+                        <p class="news-date card-text"><small class="text-muted">${publishedDate}</small></p>
                     </div>
                 </div>
             </div>
         `;
     }
-
     // Display Company News (Horizontal Scroll)
     if (companyNews && companyNews.length > 0) {
         newsHTML += '<div class="row"><div class="col-12"><h4 class="news-category">Company News</h4></div></div>';
@@ -418,11 +442,14 @@ function displayTopNews(companyNews, industryNews) {
             newsHTML += generateNewsItemHTML(news);
         });
         newsHTML += '</div>';
+    } else {
+        newsHTML += '<div class="row"><div class="col-12"><h4 class="news-category">Company News</h4><p>No recent news available for this company.</p></div></div>';
     }
-
     // Display Industry News (Rows of 3)
+    const companyIndustryElement = $('#companyIndustry'); // Assuming this ID holds the industry name
+    const currentIndustryName = companyIndustryElement.length > 0 ? companyIndustryElement.text() : 'the specified industry';
+    newsHTML += '<div class="row mt-4"><div class="col-12"><h4 class="news-category">Industry News</h4></div></div>';
     if (industryNews && industryNews.length > 0) {
-        newsHTML += '<div class="row mt-4"><div class="col-12"><h4 class="news-category">Industry News</h4></div></div>';
         newsHTML += '<div class="row">';
         for (let i = 0; i < industryNews.length; i++) {
             newsHTML += generateNewsItemHTML(industryNews[i]);
@@ -430,16 +457,16 @@ function displayTopNews(companyNews, industryNews) {
                 newsHTML += '</div><div class="row">';
             }
         }
+        // Close the last row div if it wasn't closed by the loop
         if (industryNews.length % 3 !== 0) {
             newsHTML += '</div>';
         }
-        newsHTML += '</div>'; // Close the last row.
+    } else {
+        newsHTML += `<div class="row"><div class="col-12"><p>No recent news available for ${currentIndustryName}.</p></div></div>`;
     }
-
     if ((!companyNews || companyNews.length === 0) && (!industryNews || industryNews.length === 0)) {
         newsHTML = '<div class="col-12">No recent news available.</div>';
     }
-
     topNewsList.html(newsHTML); // Use .html() to render the generated HTML
 }
 

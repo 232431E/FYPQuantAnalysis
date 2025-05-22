@@ -46,19 +46,35 @@ def get_company_news_sentiment(company_id):
             f"Title: {article.title}\nLink: {article.link}\nSummary: {article.summary}"
             for article in news_articles
         ])
-        custom_prompt = f"""Analyze the overall sentiment of the following news articles for {company_name} (ticker: {ticker}, industry: {industry})
-        based on the following recent news, considering potential environmental factors, company structure(human factors), financial reports, political and geopolitical factors that might influence the company or its market:
+        custom_prompt = f"""
+        Analyze the overall sentiment of the following recent news articles for {company_name} (ticker: {ticker}, industry: {industry}).
+        **IMPORTANT FORMATTING INSTRUCTIONS:**
+        Instead of Markdown formatting (like **bold**), please use standard HTML tags directly for emphasis (e.g., <strong>text</strong>, <em>text</em>, <u>text</u>). Do NOT use Markdown syntax (like asterisks).
 
-        **Recent News:**
+        Additionally, based on your knowledge and the provided news, identify:
+        - Key products/services/subsidiaries of {company_name}.
+        - Any significant financial predictions or important financial news that directly impacts the market outlook.
+        - Important upcoming or recent past financial key events/meetings (e.g., earnings calls, investor days, product launches, regulatory deadlines) with their dates and a brief explanation of their potential or actual impact.
+
+        Consider potential environmental factors, company structure (human factors), financial reports, political, and geopolitical factors that might influence the company or its market.
+
+        **Recent News Articles for Analysis:**
         {news_articles_formatted}
 
-        Provide a sentiment analysis with the following structure:
-        - **Overall News Summary:** (A concise summary of the key news)
-        - **Brief Overall Sentiment:** (e.g., Positive, Negative, Mixed, Neutral)
-        - **Market Outlook:** Describe the potential near-term market outlook for this company based on the news and considered factors.
-        - **Detailed Explanation:** Explain how you arrived at this sentiment and outlook, explicitly mentioning any factors that played a role in your analysis.
+        Provide a comprehensive analysis in JSON format with the following specific keys and content:
 
-        Return your analysis as a JSON object with the keys: "overall_news_summary", "brief_overall_sentiment", "market_outlook", and "detailed_explanation".
+        1.  <strong>"overall_news_summary"</strong>: A concise summary of the key news trends and events, using HTML for emphasis.
+        2.  <strong>"brief_overall_sentiment"</strong>: A brief sentiment (e.g., Positive, Negative, Mixed, Neutral) accompanied by a confidence score out of 100 (e.g., "Mixed (Score: 60/100)"). Briefly explain the score.
+        3.  <strong>"reasons_for_sentiment"</strong>: A detailed explanation of <em>why</em> the overall sentiment is as it is, explicitly mentioning the positive, negative, and neutral factors (including financial reports, political/geopolitical factors, environmental, and company structure/human factors) from the news that contribute to this sentiment. Use HTML for emphasis.
+        4.  <strong>"market_outlook"</strong>: Describe the potential near-term market outlook for this company based on the news, identifying key drivers. Use HTML for emphasis.
+        5.  <strong>"detailed_explanation"</strong>: Elaborate on the "Market Outlook," providing specific financial predictions, important financial news, and other relevant details that explain <em>why</em> the market outlook is as stated. Use HTML for emphasis.
+        6.  <strong>"key_offerings"</strong>: A list of {company_name}'s best-selling or most significant products, services, and/or subsidiaries.
+        7.  <strong>"financial_dates"</strong>: An array of objects, each representing a key financial event. Each object should have:
+            * <strong>"date"</strong>: The date of the event (e.g., "2025-05-15" or "Q3 2024").
+            * <strong>"event"</strong>: A brief description of the event (e.g., "Q4 Earnings Call", "Investor Day", "Regulatory Decision on Merger").
+            * <strong>"impact"</strong>: A short explanation of its potential or actual impact on market outlook and sentiment.
+        
+        Ensure all required fields are present in the JSON output.
         """
         print("[DEBUG - Backend] Constructed LLM Prompt:\n", custom_prompt)
         sentiment_result = analyze_news_sentiment_gemini(
