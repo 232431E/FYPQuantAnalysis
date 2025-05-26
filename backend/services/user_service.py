@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from backend import database
 from backend.models import Company, News  # Import the models
 
+# NOT YET IN USE
 def get_user_dashboard_news(db: Session, user_id: int):
     """
     Fetches news for companies that a user might be interested in.

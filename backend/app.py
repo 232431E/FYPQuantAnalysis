@@ -28,6 +28,7 @@ db = SQLAlchemy()
 scheduler_started = False
 app = None 
 
+#TRY NOT TO CHANGE THIS (IN USE FOR TEST & ACTUAL DEPLOYMENT)
 def create_app(testing = None, start_scheduler=True):
     global app
     app = Flask(__name__,

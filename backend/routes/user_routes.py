@@ -8,6 +8,7 @@ from backend.services import user_service
 
 user_routes_bp = Blueprint('user', __name__, url_prefix='/user')
 
+# All these routes are NOT IN USE (just examples of what are needed.)
 @user_routes_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Handles user login."""

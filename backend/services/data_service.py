@@ -14,6 +14,7 @@ import pytz
 
 logging.basicConfig(level=logging.INFO)
 
+#Basic financial Data Retrieval logic
 def fetch_financial_data(ticker: str, period: str = None, start: Optional[date] = None, end: Optional[date] = None, retries: int = 3, delay: float = 5, db: Optional[Session] = None, company_id: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
     """Fetches historical OHLCV data from yfinance with retry and storage logic."""
     print(f"[DEBUG - fetch_financial_data] Called for ticker: {ticker}, DB Session: {db}, Company ID: {company_id}") # Add this line
@@ -113,6 +114,7 @@ def store_fetched_financial_data(db: Session, company_id: int, data_list: List[D
     else:
         logging.info(f"No new financial records to add for company {company_id}.")
 
+# Financial Date retrieval (historical) logic
 def fetch_historical_fundamentals(ticker: str, years: int = 5) -> Optional[Dict[date, Dict[str, Any]]]:
     """Fetches historical fundamental data (annual) from yfinance with enhanced key handling."""
     print(f"[DEBUG]-fetch_historical_fundamentals: >>> ENTERING FUNCTION <<< for {ticker}")
@@ -365,6 +367,7 @@ def _store_historical_fundamentals(db: Session, company: Company, fundamental_da
     else:
         print(f"[DEBUG]-store_historical_fundamentals: INFO: No new fundamental data to store for {company.ticker_symbol}.")
 
+#Store BOTH BASIC & HISTORICAL FINANCIAL DATA logic
 def store_financial_data(db: Session, ticker: str, period: str = "5y") -> bool:
     """Stores historical OHLCV and annual fundamental data for a given ticker, linking them by date."""
     logging.debug(f"Storing financial data for ticker: {ticker}")
@@ -520,6 +523,7 @@ def needs_financial_data_update(db: Session, company_id: int, threshold_hours: i
     # Check if the latest data is from a previous day in SGT
     return data_date_sgt < now_sgt
 
+#Company NEWS retrieval
 def fetch_company_news(ticker: str, company_name: str = "", count: int = 5) -> List[Dict[str, Any]]:
     """Fetches the latest news for a specific company using yfinance."""
     logging.info(f"Fetching company news for {ticker}...")
@@ -553,6 +557,7 @@ def fetch_company_news(ticker: str, company_name: str = "", count: int = 5) -> L
         logging.error(f"Error fetching news for {ticker} from Yahoo Finance: {e}")
         return []
 
+#Industry NEWS retrieval, need to UPDATE guardian_api_key (sign up with school email for free api key)
 def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
     """Fetches the latest news related to the industry using The Guardian API."""
     guardian_api_key = "ce66226f-693d-42a5-9023-3b003666df2a"  # Your API key
@@ -598,7 +603,8 @@ def fetch_industry_news(industry: str, count: int = 3) -> List[Dict[str, Any]]:
     except KeyError as e:
         logging.error(f"Error parsing The Guardian API response for '{industry}': Missing key {e}")
         return []
-    
+
+#fetch both COMPANY & INDUSTRY NEWS retrieval
 def fetch_latest_news(ticker: str, industry: str, exchange: str, company_name: str = "") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Fetches the latest news for a company and its industry.
@@ -682,6 +688,7 @@ def get_stored_news(db: Session, company_id: int, limit: int = 20) -> List[News]
     logging.info(f"Retrieved {len(stored_news)} stored news articles for company ID: {company_id}") # DEBUG
     return stored_news
 
+# prediction NOT IN USE
 def predict_financial_trends(financial_data: Optional[List[Dict[str, Any]]]) -> Dict[str, Optional[str]]:
     """Analyzes historical financial data and predicts future trends (basic implementation)."""
     trends: Dict[str, Optional[str]] = {}
@@ -713,7 +720,7 @@ def predict_financial_trends(financial_data: Optional[List[Dict[str, Any]]]) -> 
     trends["profit_margin"] = "Analysis not implemented (requires profit data)"
 
     return trends
-
+# SIMILAR companies NOT IN USE
 def get_similar_companies(industry: Optional[str]) -> List[str]:
     """Retrieves a list of similar companies based on the industry."""
     if not industry:

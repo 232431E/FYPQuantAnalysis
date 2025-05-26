@@ -1,0 +1,133 @@
+FIle Structure
+
+QuantAnalysisPlatform/
+├── backend/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── app.py
+│   ├── config.py
+│   ├── database.py
+│   ├── tasks.py
+│   ├── .env
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── alert_model.py
+│   │   ├── data_model.py
+│   │   ├── feedback_model.py
+│   │   ├── prompt_model.py
+│   │   ├── report_model.py
+│   │   └── user_model.py
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── alert_routes.py
+│   │   ├── backtesting_routes.py
+│   │   ├── data_routes.py
+│   │   ├── download_routes.py
+│   │   ├── feedback_routes.py
+│   │   ├── graph_routes.py
+│   │   ├── llm_routes.py
+│   │   ├── prompt_routes.py
+│   │   ├── report_routes.py
+│   │   └── user_routes.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── alerting_service.py
+│   │   ├── backtesting_service.py
+│   │   ├── data_service.py
+│   │   ├── download_service.py
+│   │   ├── feedback_service.py
+│   │   ├── graph_service.py
+│   │   ├── llm_service.py
+│   │   ├── report_service.py
+│   │   └── user_service.py
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── tables/
+│   │   │   ├── alerts.sql
+│   │   │   ├── companies.sql
+│   │   │   ├── feedback.sql
+│   │   │   ├── financial_data.sql
+│   │   │   ├── news.sql
+│   │   │   ├── prompts.sql
+│   │   │   ├── reports.sql
+│   │   │   └── users.sql
+│   │   └── views/
+│   │       ├── avg_company_metrics.sql
+│   │       ├── feedback_details.sql
+│   │       ├── latest_company_financial_data.sql
+│   │       ├── monthly_financial_data.sql
+│   │       ├── report_details.sql
+│   │       ├── weekly_financial_data.sql
+│   │       └── yearly_financial_data.sql
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── check_data.py
+│   │   ├── conftest.py
+│   │   ├── test_api_endpoints.py
+│   │   ├── test_app.py
+│   │   ├── test_dashboard_api.py
+│   │   ├── test_data_routes.py
+│   │   ├── test_data_service.py
+│   │   ├── test_db_connection.py
+│   │   ├── test_llm_routes.py
+│   │   ├── test_news_retrieval.py
+│   │   ├── test_report_routes.py
+│   │   ├── test_report_service.py
+│   │   ├── test_scheduler.py
+│   │   ├── test_tasks.py
+│   │   └── test_views.py
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── static/
+│   │   │   ├── css/
+│   │   │   │   └── style.css
+│   │   │   ├── images/
+│   │   │   ├── js/
+│   │   │   │   ├── company_details.js
+│   │   │   │   ├── dashboard.js
+│   │   │   │   └── script.js
+│   │   │   ├── favicon.ico
+│   │   │   └── vendor/
+│   │   │       └── bootstrap/
+│   │   │           ├── css/
+│   │   │           │   └── bootstrap.min.css
+│   │   │           └── js/
+│   │   │               └── bootstrap.bundle.min.js
+│   │   ├── templates/
+│   │   │   ├── base.html
+│   │   │   ├── auth/
+│   │   │   │   ├── login.html
+│   │   │   │   └── register.html
+│   │   │   ├── staff/
+│   │   │   │   ├── js/
+│   │   │   │   │   ├── prompt_management.js
+│   │   │   │   │   ├── report_review.js
+│   │   │   │   │   └── user_management.js
+│   │   │   │   ├── py/
+│   │   │   │   │   ├── prompt_management_backend.py
+│   │   │   │   │   ├── report_review_backend.py
+│   │   │   │   │   └── user_management_backend.py
+│   │   │   │   ├── prompt_management.html
+│   │   │   │   ├── report_review.html
+│   │   │   │   └── user_management.html
+│   │   │   └── user/
+│   │   │       ├── js/
+│   │   │       │   ├── analysis.js
+│   │   │       │   ├── backtesting.js
+│   │   │       │   ├── data_download.js
+│   │   │       │   └── track_company.js
+│   │   │       ├── py/
+│   │   │       │   ├── analysis.html
+│   │   │       │   ├── backtesting.html
+│   │   │       │   ├── company_details.html
+│   │   │       │   ├── dashboard.html
+│   │   │       │   ├── data_download.html
+│   │   │       │   └── track_company.html
+│   │   └── requirements.txt
+├── instance/
+├── documentation/
+│   └── api_documentation.md
+├── .gitignore
+├── LICENSE
+└── README.md

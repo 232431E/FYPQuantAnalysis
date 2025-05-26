@@ -16,6 +16,5 @@ CREATE TABLE IF NOT EXISTS financial_data (
     cash_flow DECIMAL(15, 2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (company_id) REFERENCES companies(company_id),
-    INDEX (company_id, date) -- For efficient querying
+    FOREIGN KEY (company_id) REFERENCES companies(company_id)
 );

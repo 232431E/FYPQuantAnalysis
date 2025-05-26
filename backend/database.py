@@ -6,8 +6,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from flask import g
 from datetime import date  # Import date from datetime
 
+# replace SQLALCHEMYDBURL with your own one.
 SQLALCHEMY_DATABASE_URL = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:mySQL2025%21@localhost/fypquantanalysisplatform'
-TEST_DATABASE_URL = "sqlite:///:memory:"
+TEST_DATABASE_URL = "sqlite:///:memory:" #This is test database (so dont mess with actual data in db)
 
 Base = declarative_base()  # Define Base *before* importing models
 
@@ -232,7 +233,7 @@ def get_news_by_company(db: Session, company_id: int, limit: int = 10) -> List[N
         News.published_date.desc() # changed published_at to published_date
     ).limit(limit).all()
 
-# --- Alert CRUD Operations ---
+# --- Alert CRUD Operations (NOT IN USE)---
 def get_alert(db: Session, alert_id: int) -> Optional[Alert]:
     """Gets an alert by its ID."""
     return db.query(Alert).filter(Alert.alert_id == alert_id).first()
@@ -263,7 +264,7 @@ def delete_alert(db: Session, alert_id: int) -> bool:
         return True
     return False
 
-# --- Report CRUD Operations ---
+# --- Report CRUD Operations (NOT IN USE)---
 def get_report(db: Session, report_id: int) -> Optional[Report]:
     """Gets a report by its ID."""
     return db.query(Report).filter(Report.report_id == report_id).first()
@@ -294,7 +295,7 @@ def delete_report(db: Session, report_id: int) -> bool:
         return True
     return False
 
-# --- Feedback CRUD Operations ---
+# --- Feedback CRUD Operations (NOT IN USE)---
 def get_feedback(db: Session, feedback_id: int) -> Optional[Feedback]:
     """Gets a feedback by its ID."""
     return db.query(Feedback).filter(Feedback.feedback_id == feedback_id).first()
@@ -325,7 +326,7 @@ def delete_feedback(db: Session, feedback_id: int) -> bool:
         return True
     return False
 
-# --- Prompt CRUD Operations ---
+# --- Prompt CRUD Operations (NOT IN USE)---
 def create_prompt_version(db: Session, user_id: int, original_prompt: str, prompt_text: str):
     latest_prompt = db.query(PromptVersion).order_by(PromptVersion.prompt_id.desc()).first()
     next_prompt_id = 1 if not latest_prompt else latest_prompt.prompt_id + 1

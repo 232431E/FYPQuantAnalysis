@@ -47,7 +47,7 @@ def analyze_news_sentiment_perplexity(news_articles: List[Dict[str, Any]], llm_m
     except requests.exceptions.RequestException as e:
         logging.error(f"Error calling Perplexity API: {e}")
         return {"brief": f"Perplexity API error: {e}", "sentiment": "Neutral"}
-
+# replace GOOGLE_API_KEY IN .env file 
 def analyze_news_sentiment_gemini(news_articles: List[Dict[str, Any]], prompt: Optional[str] = None, llm_model: str = 'gemini-2.0-flash-lite') -> Dict[str, Optional[Any]]:
     """Analyzes news sentiment using Google Gemini API, with optional custom prompt."""
     print("[DEBUG - Service - Gemini] analyze_news_sentiment_gemini called with news articles count:", len(news_articles),"with articles", (news_articles), "prompt provided:", prompt is not None)

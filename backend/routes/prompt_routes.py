@@ -4,6 +4,7 @@ from backend.models.prompt_model import PromptVersion
 
 prompt_bp = Blueprint('prompts', __name__, url_prefix='/prompts')
 
+#THESE ARE NOT IN USE, JUST EXAMPLES OF WHAT IS NEEDED
 def prompt_version_to_dict(prompt_version: PromptVersion):
     """
     Helper function to convert a PromptVersion object to a dictionary.

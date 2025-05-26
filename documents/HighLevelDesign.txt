@@ -1,0 +1,104 @@
+High-Level Design Document V1.0 (Final)
+This document outlines the system's purpose, key features, technology choices, and design considerations. It also highlights how the development process is being guided by LLM-generated instructions and best practices.
+Introduction
+Purpose: The Quant Analysis Platform aims to provide investors and financial analysts with tools for comprehensive financial analysis, data visualization, and automated report generation, leveraging large language models (LLMs) for specific analytical tasks (news sentiment and graph analysis) and using LLM-generated guidance for the overall development process.
+Target Users:
+Investors: Seeking automated analysis and insights for investment decisions.
+Financial Analysts: Needing tools for in-depth analysis, prompt refinement, and report review.
+System Administrators: Responsible for user management and system security.
+Data Analysts/Researchers: Requiring access to raw market data for modeling.
+Quantitative Traders: Utilizing backtesting and strategy simulation capabilities.
+
+Key Features
+Automated Investment Analysis Reports: Generates reports based on user-specified company data, incorporating LLM-driven news sentiment analysis via llm_routes.py and llm_service.py. The generation of these reports can now explicitly link to a specific version of the LLM prompt used (stored in the prompt_versions table) to ensure reproducibility and track prompt evolution. The development of this feature, including data retrieval and report formatting, is being guided by LLM-generated step-by-step instructions.
+
+
+Data Visualization and Performance Tracking: Provides visual graphs of key financial metrics, supported by graph_routes.py. Daily news updates are handled by scheduled tasks in tasks.py. The visualization_service.py is being developed with guidance from LLM prompts on effective data visualization techniques and trend identification logic.
+
+
+User Management and Security: Manages user accounts (stored in the users table via database.py), access permissions, and enforces security measures like 2FA. The implementation of these security features is following best practices suggested by LLM prompts.
+
+
+LLM Prompt Management: Enables financial analysts to refine LLM prompts for news sentiment and graph analysis using version control. A new prompt_versions table (backend/models/prompt_model.py) stores each iteration of a prompt, allowing analysts to track changes, revert to previous versions, and designate an 'operative' version. This feature is managed via llm_service.py and database.py. The development of the prompt management interface and backend logic is being guided by LLM suggestions for usability and efficiency.
+
+
+Report Review and Feedback: Allows analysts to review generated reports (from the reports table) and provide feedback (stored in the feedback table) for prompt optimization. The feedback can now be directly associated with the specific prompt_version_id that generated the report, enabling targeted improvements to prompts. The design of this feedback loop and the associated UI/backend components are informed by LLM best practices for feedback mechanisms.
+
+
+Market Data Access and Download: Enables data analysts to access and download raw market data in various formats, utilizing data_service.py and exposed through api.py and data_routes.py. The implementation of data retrieval and export functionalities is being guided by LLM prompts for efficient data handling.
+
+
+Backtesting and Strategy Simulation: Allows quantitative traders to backtest trading strategies. The development of the backtesting engine in backtesting_service.py is being guided by LLM suggestions on common backtesting methodologies.
+
+
+
+Technology Choices
+Backend: Python Flask framework for API development. The choice of Flask and the overall backend architecture are based on LLM recommendations for building scalable and maintainable web applications.
+Database: MySQL for persistent data storage. The database schema design (tables like users, companies, financial_data, news, reports, alerts, prompt_versions, feedback) has been influenced by LLM suggestions for data organization and relationships, as evidenced in database.py and the updated prompt_model.py.
+LLM Integration: OpenAI or Vertex AI (Gemini as confirmed by google.generativeai import in llm_service.py) for news sentiment analysis and potentially trend identification for graphs. The integration process using the respective Python libraries is following LLM-provided code examples and best practices for API interaction.
+Frontend: Bootstrap for responsive UI development. The structure and styling of the frontend are being implemented based on LLM-suggested UI/UX principles for financial applications.
+Data Visualization: Python libraries like Matplotlib, Seaborn, or Plotly (within visualization_service.py). The selection and usage of these libraries are guided by LLM prompts on effective visualization of financial data.
+External APIs: Integration with financial data providers (e.g., yfinance as seen in api.py and data_service.py) and potentially notification services. The integration process for each API is being implemented based on LLM-provided documentation and best practices for API consumption.
+
+System Architecture Considerations
+Microservices Architecture: The backend is structured as a set of interconnected services (e.g., user_service, data_service, llm_service, report_service) to promote modularity and maintainability. The decomposition into microservices was guided by LLM architectural recommendations.
+API-Driven Design: Clear separation of frontend and backend communication via RESTful APIs. The API endpoint design and data exchange formats are being developed following LLM best practices for API design, as seen in api.py, data_routes.py, graph_routes.py, and llm_routes.py.
+Cloud-Based Deployment: The platform is intended for cloud deployment (e.g., AWS, Google Cloud, Azure) to ensure scalability and reliability. The choice of cloud provider and deployment strategy is being informed by LLM recommendations for cloud infrastructure.
+Data Storage: MySQL is used for structured data, including LLM prompts and generated reports. The database design and query optimization are being guided by LLM suggestions for performance, with specific tables like users, companies, financial_data, news, reports, alerts, prompt_versions, and feedback confirmed in database.py.
+Security: Security is a paramount concern, with measures like secure authentication (including 2FA), authorization, and data encryption being implemented based on LLM-recommended security best practices.
+
+Data Flow
+User Interaction: Users interact with the Bootstrap frontend. The design and functionality of the UI are being implemented based on LLM UX suggestions.
+API Requests: Frontend sends requests to the Flask backend via the API Gateway (the need for and design of the API Gateway might have been informed by LLM architectural advice).
+Backend Processing: Flask backend services handle requests. For LLM-related tasks (sentiment analysis, graph insights), the llm_service.py interacts with the LLM API using prompts. These prompts are now managed in the prompt_versions table, allowing for selection of specific prompt versions. The llm_routes.py handles the direct LLM interaction for report generation. The logic within each service is being developed step-by-step based on LLM-generated instructions.
+Data Storage: Data is stored and retrieved from the MySQL database. The data access patterns and query logic are being implemented with efficiency in mind, potentially guided by LLM performance optimization tips, as seen in database.py and various service files. The prompt_versions table plays a crucial role here, storing and retrieving prompt iterations.
+External Data: External APIs provide market data (e.g., yfinance in api.py and data_service.py) and news, integrated based on LLM-provided documentation and best practices.
+LLM Interaction: The LLM Integration Service (llm_service.py) handles communication with the LLM API, sending prompts (crafted and refined by financial analysts and retrieved from prompt_versions table) and receiving responses for news sentiment analysis and potentially graph trend identification. The integration process follows LLM-provided guidelines.
+Data Delivery: Processed data and reports (including LLM-generated insights and the prompt_version_id used) are returned to the frontend for display. The format and structure of the data delivered are being designed based on LLM suggestions for effective presentation.
+
+Development Considerations
+Agile Methodology: The project is being developed using an Agile approach with iterative development cycles. The planning and execution of these cycles are being guided by LLM-suggested Agile best practices.
+CI/CD Pipeline: A Continuous Integration/Continuous Deployment pipeline will be set up to automate testing and deployment. The setup and configuration of this pipeline will follow LLM recommendations for DevOps practices.
+Testing Strategy: Comprehensive unit, integration, and end-to-end tests will be written to ensure the quality of the platform. The testing strategy and test case design are being informed by LLM best practices for software testing.
+Scalability and Performance: The architecture is being designed with scalability and performance in mind, incorporating LLM suggestions for efficient resource utilization and load balancing (if needed).
+
+Future Considerations
+Integration with more advanced LLM capabilities for deeper financial analysis. The exploration and integration of these future capabilities will be guided by ongoing LLM advancements and recommendations.
+Implementation of A/B testing for LLM prompts, potentially leveraging the operative flag and versioning in the prompt_versions table (the design of the A/B testing framework might be informed by LLM suggestions).
+Enhancements to data visualization and reporting based on user feedback and LLM-suggested best practices.
+
+Architecture Diagram:
+Code snippet
+graph TD
+    subgraph Quant Analysis Platform
+        A[User (Investor, Analyst, Admin)] --> B(Frontend (Bootstrap));
+        B --> C(API Layer);
+        C --> D(Backend (Python Flask));
+        D --> E(External System);
+    end
+    subgraph Frontend (Bootstrap)
+        B1[Bootstrap Frontend];
+    end
+    subgraph API Layer
+        C1[API Gateway];
+    end
+    subgraph Backend (Python Flask)
+        D1[Python Flask Backend];
+        D2[User Management Service];
+        D3[Data Acquisition & Storage Service];
+        D4[LLM Integration Service];
+        D5[Report Generation Service];
+        D6[Database (MySQL)]
+        D4 --> D6;
+        D5 --> D6;
+        D3 --> D6;
+        D2 --> D6;
+        D6 --- D4;
+        D6 --- D5;
+        D6 --- D3;
+        D6 --- D2;
+    end
+    E[External System] --> D3;
+    E[External System] --> D4;
+    C1 --> D;
+    D --> C1;

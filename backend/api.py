@@ -1,4 +1,5 @@
-#backend/api.pi
+#backend/api.py
+# ALL FUNC IN USE
 from datetime import date, timedelta
 from venv import logger
 import yfinance as yf

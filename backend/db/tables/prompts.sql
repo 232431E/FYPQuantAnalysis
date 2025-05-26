@@ -1,11 +1,13 @@
 -- backend/db/tables/prompts.sql
-CREATE TABLE IF NOT EXISTS prompts (
-    prompt_id INT AUTO_INCREMENT PRIMARY KEY,
-    prompt_name VARCHAR(255) NOT NULL,
-    prompt_text TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS prompt_versions (
+    prompt_version_id INT PRIMARY KEY AUTO_INCREMENT,
+    prompt_id INT NOT NULL,
+    user_id INT NOT NULL,
     version INT NOT NULL,
     operative BOOLEAN DEFAULT TRUE,
+    original_prompt TEXT NOT NULL,
+    prompt_text TEXT NOT NULL, -- Current prompt text
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY (prompt_name, version) -- Ensure unique prompt versions
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
