@@ -171,7 +171,7 @@ API Key Location: The guardian_api_key is hardcoded as "ce66226f-693d-42a5-9023-
 Google Generative AI (Gemini API):
 Purpose: Performing news summary and sentiment analysis reports.
 Model Used: gemini-2.0-flash-lite.
-API Key Location: The GOOGLE_API_KEY is retrieved from environment variables using os.getenv("GOOGLE_API_KEY"). A hardcoded example AIzaSyAqNKqCXp366ThEy09XpAywQcpvKmqIPtk is also present for demonstration purposes; this should be replaced with a secure key in your .env file.
+API Key Location: The GOOGLE_API_KEY is retrieved from environment variables using os.getenv("GOOGLE_API_KEY"). A hardcoded example present for demonstration purposes; this should be replaced with a secure key in your .env file.
 
 Perplexity AI API:
 Purpose: Although mentioned in llm_service.py as a potential LLM provider, it is explicitly noted as "not updated yet & not in use".
