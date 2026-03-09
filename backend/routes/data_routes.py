@@ -3,6 +3,7 @@ import datetime
 from flask import Blueprint, current_app, jsonify, request, session
 import pytz
 from backend.database import get_all_companies, get_db
+from backend.utils.auth_utils import login_required, permission_required
 from sqlalchemy.orm import Session
 from backend.models import data_model, Company, FinancialData
 from backend.services import data_service
@@ -34,6 +35,7 @@ def needs_update(db: Session, company_id: int, threshold_hours: int = 24) -> boo
     return data_date_sgt < now_sgt
 
 @data_routes_bp.route('/ingest/<ticker>', methods=['POST'])
+@permission_required('admin')
 def ingest_data(ticker):
     """Handles the ingestion of financial data for a given ticker."""
     print(f"[DEBUG - ingest_data] Received request to ingest data for ticker: {ticker}")
@@ -57,6 +59,7 @@ def ingest_data(ticker):
         db.close()
 
 @data_routes_bp.route('/ingest/all', methods=['POST'])
+@permission_required('admin')
 def ingest_all_data():
     """Triggers the check and update of financial data for ALL companies."""
     print("Received request to check and update data for all companies (via task)")

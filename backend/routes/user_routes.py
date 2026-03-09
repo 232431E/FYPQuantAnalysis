@@ -16,15 +16,18 @@ def login():
         username = request.form['username']
         password = request.form['password']
         db: Session = get_db()
-        user = db.query(User).filter_by(username=username).first()
+        try:
+            user = db.query(User).filter_by(username=username).first()
 
-        if user and check_password_hash(user.password_hash, password):
-            session['user_id'] = user.user_id
-            session['username'] = user.username
-            session['role'] = user.role  # Store user role in session
-            return redirect(url_for('index'))  # Redirect to dashboard
-        else:
-            return render_template('user/login.html', error='Invalid username or password')
+            if user and check_password_hash(user.password_hash, password):
+                session['user_id'] = user.user_id
+                session['username'] = user.username
+                session['role'] = user.role  # Store user role in session
+                return redirect(url_for('index'))  # Redirect to dashboard
+            else:
+                return render_template('user/login.html', error='Invalid username or password')
+        finally:
+            db.close()
 
     return render_template('user/login.html')  # Render login form for GET request
 
@@ -44,23 +47,25 @@ def register():
         email = request.form['email']
         password = request.form['password']
         role = 'user'  # Default role
-
         db: Session = get_db()
-        # Check if username or email already exists
-        existing_user = db.query(User).filter((User.username == username) | (User.email == email)).first()
-        if existing_user:
-            return render_template('user/register.html', error='Username or email already exists')
+        try:
+            # Check if username or email already exists
+            existing_user = db.query(User).filter((User.username == username) | (User.email == email)).first()
+            if existing_user:
+                return render_template('user/register.html', error='Username or email already exists')
 
-        hashed_password = generate_password_hash(password)
-        new_user = User(username=username, email=email, password_hash=hashed_password, role=role)
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+            hashed_password = generate_password_hash(password)
+            new_user = User(username=username, email=email, password_hash=hashed_password, role=role)
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
 
-        session['user_id'] = new_user.user_id
-        session['username'] = new_user.username
-        session['role'] = new_user.role
-        return redirect(url_for('index'))
+            session['user_id'] = new_user.user_id
+            session['username'] = new_user.username
+            session['role'] = new_user.role
+            return redirect(url_for('index'))
+        finally:
+            db.close()
     return render_template('user/register.html')
 
 # The dashboard route was initially in app.py but it's more user-centric, so it's moved here.

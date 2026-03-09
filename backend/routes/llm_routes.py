@@ -2,6 +2,7 @@
 # all IN USE (for news report gen)
 from flask import Blueprint, abort, jsonify
 from backend.database import get_db, get_company
+from backend.utils.auth_utils import login_required
 from sqlalchemy.orm import Session
 from backend.models import News, Company
 from backend.services.llm_service import analyze_news_sentiment_gemini
@@ -20,6 +21,7 @@ def not_found(error):
     return response
 
 @llm_routes_bp.route('/sentiment/<int:company_id>', methods=['GET'])
+@login_required
 def get_company_news_sentiment(company_id):
     """Retrieves news for a company and analyzes its sentiment using Gemini."""
     db: Session = get_db()
@@ -93,6 +95,7 @@ def get_company_news_sentiment(company_id):
         db.close()
 
 @llm_routes_bp.route('/report/<int:company_id>', methods=['GET'])
+@login_required
 def get_llm_report(company_id):
     """
     Generates an LLM-powered report for a given company, including sentiment analysis of recent news.

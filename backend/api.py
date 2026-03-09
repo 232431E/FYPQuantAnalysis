@@ -27,6 +27,7 @@ from backend.services.llm_service import (
     analyze_news_sentiment_perplexity
 )
 import os
+from backend.utils.auth_utils import login_required
 
 def format_market_cap(market_cap):
     if market_cap >= 1e12:
@@ -93,6 +94,7 @@ def get_latest_data():
         print("[DEBUG] /data/dashboard/latest: Database connection closed")
 
 @api_bp.route('/company/<ticker>', methods=['GET'])  # Corrected route definition
+@login_required
 def get_company_data(ticker):
     """
     For company_details page """

@@ -58,10 +58,12 @@ def fetch_graph_data(db: Session, company_id: int, timeframe: str):
 def get_company_graph_data(company_id, timeframe):
     print(f"[DEBUG] get_company_graph_data: company_id={company_id}, timeframe={timeframe}")
     db = get_db()
-    data, error = fetch_graph_data(db, company_id, timeframe)
-    db.close()
-    if error:
-        print(f"[DEBUG] get_company_graph_data: Returning error: {error}")
-        return jsonify({'error': error}), 400
-    print(f"[DEBUG] get_company_graph_data: Returning {len(data)} data points")
-    return jsonify(data), 200
+    try:
+        data, error = fetch_graph_data(db, company_id, timeframe)
+        if error:
+            print(f"[DEBUG] get_company_graph_data: Returning error: {error}")
+            return jsonify({'error': error}), 400
+        print(f"[DEBUG] get_company_graph_data: Returning {len(data)} data points")
+        return jsonify(data), 200
+    finally:
+        db.close()
