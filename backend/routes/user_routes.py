@@ -1,5 +1,5 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
-from backend.database import get_db
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
+from backend.database import get_db, get_session_local
 from sqlalchemy.orm import Session
 from backend.models import User
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -109,3 +109,18 @@ def login_required(f):
             return redirect(url_for('user.login'))  # Redirect to login page (use blueprint name)
         return f(*args, **kwargs)
     return decorated_function
+
+
+@user_routes_bp.route('/verify_email_update/<token>')
+def verify_email_update(token):
+    db = get_session_local()()
+    try:
+        user, message = user_service.confirm_email_update(db, token)
+        if user:
+            session['email'] = user.email
+            flash(message, 'success')
+        else:
+            flash(message, 'danger')
+        return redirect(url_for('user.profile'))
+    finally:
+        db.close()

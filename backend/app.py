@@ -124,6 +124,22 @@ def create_app(testing = None, start_scheduler=True):
         finally:
             db.close()
             
+    @app.context_processor
+    def inject_permissions():
+        def has_permission(permission):
+            db = database.get_session_local()()
+            try:
+                user_id = session.get('user_id')
+                if not user_id:
+                    return False
+                try:
+                    from backend.services.rbac_service import check_permission
+                except Exception:
+                    return False
+                return check_permission(db, user_id, permission)
+            finally:
+                db.close()
+        return dict(has_permission=has_permission)
     return app
 
 if __name__ == '__main__':
